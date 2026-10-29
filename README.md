@@ -4,6 +4,8 @@ A Philadelphia remix of mrdoob's Slop New York (MIT): an explorable 3D Center Ci
 
 ## Run it
 
+**Play in the browser:** [https://paristech1.github.io/OpenPhilly/](https://paristech1.github.io/OpenPhilly/) (GitHub Pages)
+
 ```
 OpenPhilly/
 ├── index.html   <- the whole game
@@ -12,7 +14,7 @@ OpenPhilly/
     └── spec.md  <- build spec
 ```
 
-1. Open `index.html` in a modern browser (needs internet for three.js and fonts from jsDelivr / Google Fonts).
+1. Open the GitHub Pages link above, or open `index.html` locally (needs internet for three.js and fonts from jsDelivr / Google Fonts).
 2. Or serve it locally: `python3 -m http.server 8000`, then visit `http://localhost:8000`.
 
 ## Controls
