@@ -137,7 +137,7 @@ kbd{font-family:var(--mono);font-size:10px;color:var(--dim);border:1px solid var
   <h2>Weather</h2>
   <div class="grid2" id="weatherOpts"></div>
   <h2>Controls</h2>
-  <div class="keys"><b>W A S D</b> / arrows move · <b>Shift</b> boost<br><b>Space</b>/<b>E</b> climb · <b>Q</b>/<b>C</b> descend (fly)<br><b>1–4</b> modes · <b>5–0</b> cameras · <b>V</b> next follow cam<br><b>T</b> time of day · <b>Y</b> rain · <b>M</b> map · <b>G</b> next car · <b>R</b> race cam<br>drag to look · scroll to zoom</div>
+  <div class="keys"><b>W A S D</b> / arrows move · <b>Shift</b> boost<br><b>Space</b>/<b>E</b> climb · <b>Q</b>/<b>C</b> descend (fly)<br><b>1–4</b> modes · <b>5–0</b> cameras · <b>V</b> next follow cam<br><b>T</b> time of day · <b>Y</b> rain · <b>N</b> mute · <b>M</b> map · <b>G</b> next car · <b>R</b> race cam<br>drag to look · scroll to zoom · tap once for sound</div>
 </aside>
 
 <div id="hint" class="hud glass"><b>WASD</b> drive · <b>Shift</b> boost · drag to look<br><b>1–4</b> modes · <b>5–0</b> cameras · <b>T</b> time · <b>M</b> map</div>
@@ -509,6 +509,17 @@ const WARE = ['#8a6b55', '#9b8770', '#7a5a48', '#a08060', '#6f6a63', '#8c4a36', 
 const CHINA = ['#a33a2a', '#c8b28a', '#5c7a5a', '#b85c38', '#d9c7a0', '#7a3326', '#3f6a5e'];
 
 const B = [];
+// Pre-baked OSM-style footprints (Rittenhouse / Walnut–Locust grid). Zone generator fills everywhere else.
+const OSM_GRID = { x0: -720, x1: -380, z0: 110, z1: 370 };
+const OSM = [
+  [-655, 318, 26, 20, 44], [-610, 318, 22, 18, 36], [-565, 318, 24, 19, 52], [-520, 318, 20, 17, 28],
+  [-655, 268, 25, 22, 48], [-605, 268, 23, 20, 62], [-555, 268, 26, 21, 38], [-505, 268, 18, 16, 22],
+  [-650, 218, 24, 18, 34], [-600, 218, 22, 20, 41], [-550, 218, 25, 19, 55], [-500, 218, 19, 17, 26],
+  [-645, 168, 23, 21, 32], [-595, 168, 21, 18, 46], [-545, 168, 24, 20, 58], [-495, 168, 20, 16, 24],
+  [-640, 138, 26, 22, 30], [-590, 138, 22, 19, 40], [-540, 138, 25, 20, 50]
+];
+function inOsmGrid(x, z) { return x > OSM_GRID.x0 && x < OSM_GRID.x1 && z > OSM_GRID.z0 && z < OSM_GRID.z1; }
+function injectOsmFootprints() { for (const f of OSM) { const [x, z, w, d, h] = f; tryB(x, z, w, d, h, pick(OFFICE.concat(BRICK)), 1); } }
 function addB(x, z, w, d, h, c, type, y = 0) {
   if (w < 2 || d < 2 || h < 2) return;
   B.push({ x, z, w, d, h, y, c, type });
@@ -536,6 +547,7 @@ function genBlock(x0, x1, z0, z1) {
     if (park.k === 'lawn') for (let i = 0; i < 14; i++) addTree(rr(x0 + 6, x0 + 18), rr(z0 + 6, z1 - 6));
     return;
   }
+  if (inOsmGrid(cx, cz)) return;
   const zn = zoneAt(cx, cz);
   const ix0 = x0 + 3.5, ix1 = x1 - 3.5, iz0 = z0 + 3.5, iz1 = z1 - 3.5, W = ix1 - ix0, D = iz1 - iz0;
   if (W < 8 || D < 8) return;
@@ -2419,8 +2431,11 @@ function buildStreetDetail() {
 
 // ---------------------------------------------------------------- traffic & pedestrians
 let ciraMat = null;
-const LANES = [], CARS = [], PEDS = [];
-function lane(ax, az, bx, bz, ring = false, spd = 11) { const L = Math.hypot(bx - ax, bz - az); if (L < 60) return; LANES.push({ ax, az, dx: (bx - ax) / L, dz: (bz - az) / L, L, ring, spd }); }
+const LANES = [], CARS = [], PEDS = [], TRANSIT = [];
+function lane(ax, az, bx, bz, ring = false, spd = 11, kind = 'car', y = 0) {
+  const L = Math.hypot(bx - ax, bz - az); if (L < 60) return;
+  LANES.push({ ax, az, dx: (bx - ax) / L, dz: (bz - az) / L, L, ring, spd, kind, y, cars: [], units: [] });
+}
 // ---------------------------------------------------------------- AFTERHOURS car models
 const MODELS = window.CAR_MODELS || [];
 const MODEL_PAINT = { kage_r: '#e3e6e9', wisp_07: '#7b5cff', autobahn_63: '#1d2a3a', gran_four: '#b3261e', volcano_p1: '#ffc20e', overload_3k: '#10131a', hikari_91: '#f2f0ea', hellbound_717: '#c4471f', vandal_ss: '#2f6b4a', stratos_v: '#3a78d8' };
@@ -2492,6 +2507,7 @@ function buildTraffic() {
   });
   const nm = Math.max(1, MODELS.length);
   for (const l of LANES) {
+    if (l.kind !== 'car') continue;
     l.cars = [];
     const n = Math.max(1, Math.round(l.L / 600 * rr(0.6, 1.4)));
     for (let i = 0; i < n; i++) {
@@ -2527,6 +2543,66 @@ function buildTraffic() {
   PEDS.forEach((p, i) => traffic.peds.setColorAt(i, tmpC.set(pick(pedCols))));
   traffic.peds.castShadow = true; traffic.peds.frustumCulled = false; scene.add(traffic.peds);
 }
+function buildElStructure() {
+  const pylons = [];
+  for (let x = -1380; x <= 1460; x += 92) pylons.push([x, 0]);
+  for (let t = 0.05; t <= 1; t += 0.11) pylons.push([1480 + t * 175, -t * 610]);
+  const pMat = mat('#5a4f62', { metalness: 0.45, roughness: 0.5 });
+  const deckMat = mat('#3a3448', { metalness: 0.3, roughness: 0.65 });
+  const railMat = glowMat('#c8ff3a', '#c8ff3a', 0.4);
+  const pillar = new THREE.InstancedMesh(BOX, pMat, pylons.length);
+  pylons.forEach(([x, z], i) => { dummy.position.set(x, 5.5, z); dummy.rotation.set(0, 0, 0); dummy.scale.set(1.5, 11, 1.5); dummy.updateMatrix(); pillar.setMatrixAt(i, dummy.matrix); });
+  pillar.castShadow = true; scene.add(pillar);
+  const decks = [];
+  for (let x = -1380; x < 1440; x += 38) decks.push([x, 0, 0, 40, 8]);
+  for (let t = 0; t <= 1; t += 0.07) { const x = 1480 + t * 175, z = -t * 610, ry = Math.atan2(-610, 175); decks.push([x, z, ry, 38, 8]); }
+  const deck = new THREE.InstancedMesh(BOX, deckMat, decks.length);
+  decks.forEach(([x, z, ry, w, d], i) => { dummy.position.set(x, 11.2, z); dummy.rotation.set(0, ry, 0); dummy.scale.set(w, 0.35, d); dummy.updateMatrix(); deck.setMatrixAt(i, dummy.matrix); });
+  deck.receiveShadow = true; scene.add(deck);
+  const rails = new THREE.InstancedMesh(BOX, railMat, decks.length * 2);
+  decks.forEach(([x, z, ry, w, d], i) => {
+    for (const side of [-1, 1]) {
+      dummy.position.set(x + Math.sin(ry) * side * 3.2, 11.55, z + Math.cos(ry) * side * 3.2);
+      dummy.rotation.set(0, ry, 0); dummy.scale.set(w * 0.95, 0.08, 0.12); dummy.updateMatrix();
+      rails.setMatrixAt(i * 2 + (side > 0 ? 1 : 0), dummy.matrix);
+    }
+  });
+  scene.add(rails);
+}
+function buildSepta() {
+  const mkt = EW.find(e => e.name === 'Market St'), sg = EW.find(e => e.name === 'Spring Garden St'), ch = EW.find(e => e.name === 'Chestnut St');
+  if (mkt) lane(mkt.x0 + 260, mkt.z, mkt.x1 - 260, mkt.z, false, 8.5, 'trolley', 0.06);
+  if (sg) lane(sg.x0 + 100, sg.z, sg.x1 - 100, sg.z, false, 7.5, 'trolley', 0.06);
+  if (ch) lane(ch.x0 + 140, ch.z, ch.x1 - 140, ch.z, false, 7, 'trolley', 0.06);
+  lane(-1410, 0, 1470, 0, false, 17, 'el', 11);
+  lane(1470, 0, 1665, -610, false, 15, 'el', 11);
+  buildElStructure();
+  let ti = 0, ei = 0;
+  for (const l of LANES) {
+    if (l.kind === 'car') continue;
+    l.units = [];
+    const n = l.kind === 'el' ? Math.max(1, Math.round(l.L / 1200)) : Math.max(1, Math.round(l.L / 750));
+    for (let i = 0; i < n; i++) {
+      const u = { l, s: (i + rnd() * 0.35 + 0.2) * l.L / n, v: l.spd, x: 0, z: 0, y: l.y, yaw: 0, init: false,
+        hx: l.kind === 'el' ? 8.5 : 5.2, hz: l.kind === 'el' ? 1.35 : 1.2,
+        kx: 0, kz: 0, kvx: 0, kvz: 0, ky: 0, kvy: 0, stun: 0, spin: 0, gap: 1e9, kind: l.kind, bx: 0, bz: 0, ryaw: 0 };
+      TRANSIT.push(u); l.units.push(u);
+      u.slot = l.kind === 'trolley' ? ti++ : ei++;
+    }
+  }
+  if (ti) {
+    traffic.trolleyM = new THREE.InstancedMesh(new THREE.BoxGeometry(10.5, 3.1, 1.12), new THREE.MeshStandardMaterial({ color: 0x005e3a, roughness: 0.42, metalness: 0.12 }), ti);
+    traffic.trolleyM.castShadow = true; traffic.trolleyM.frustumCulled = false; scene.add(traffic.trolleyM);
+    traffic.trolleyStripe = new THREE.InstancedMesh(new THREE.BoxGeometry(10.2, 0.35, 1.14), new THREE.MeshStandardMaterial({ color: 0xe8dcc8, roughness: 0.5 }), ti);
+    traffic.trolleyStripe.frustumCulled = false; scene.add(traffic.trolleyStripe);
+  }
+  if (ei) {
+    traffic.elM = new THREE.InstancedMesh(new THREE.BoxGeometry(15.5, 3.5, 1.32), new THREE.MeshStandardMaterial({ color: 0x5a6a62, roughness: 0.32, metalness: 0.4 }), ei);
+    traffic.elM.castShadow = true; traffic.elM.frustumCulled = false; scene.add(traffic.elM);
+    traffic.elWin = new THREE.InstancedMesh(new THREE.BoxGeometry(14.8, 1.1, 1.34), new THREE.MeshStandardMaterial({ color: 0x1a2228, roughness: 0.15, metalness: 0.6 }), ei);
+    traffic.elWin.frustumCulled = false; scene.add(traffic.elWin);
+  }
+}
 const traffic = {};
 const carM = new THREE.Matrix4(), carQ = new THREE.Quaternion(), carS = new V3(1, 1, 1), carP = new V3(), YAX = new V3(0, 1, 0), whM = new THREE.Matrix4(), whL = new THREE.Matrix4();
 // knock-back integration shared by traffic and racers (bumped cars slide, spin a little, then drift back to their lane)
@@ -2539,6 +2615,7 @@ function integrateKnock(c, dt) {
 function playerRel(x, z, yaw) { const fx = -Math.sin(yaw), fz = -Math.cos(yaw), dx = P.pos.x - x, dz = P.pos.z - z; return [dx * fx + dz * fz, Math.abs(dx * fz - dz * fx)]; }
 function updateTraffic(dt, t) {
   for (const l of LANES) {
+    if (l.kind !== 'car') continue;
     const a = l.cars; if (a.length < 2) { if (a[0]) a[0].gap = 1e9; continue; }
     a.sort((p, q) => p.s - q.s);
     for (let i = 0; i < a.length; i++) { const nx = a[(i + 1) % a.length]; a[i].gap = (nx.s - a[i].s + l.L) % l.L; }
@@ -2574,6 +2651,48 @@ function updateTraffic(dt, t) {
     traffic.peds.setMatrixAt(i, carM);
   }
   traffic.peds.instanceMatrix.needsUpdate = true;
+}
+function updateTransit(dt) {
+  for (const l of LANES) {
+    if (!l.units || l.kind === 'car') continue;
+    const a = l.units; if (a.length < 2) { if (a[0]) a[0].gap = 1e9; continue; }
+    a.sort((p, q) => p.s - q.s);
+    for (let i = 0; i < a.length; i++) { const nx = a[(i + 1) % a.length]; a[i].gap = (nx.s - a[i].s + l.L) % l.L; }
+  }
+  for (const u of TRANSIT) {
+    const l = u.l;
+    let want = l.spd;
+    if (u.gap < 38) want = Math.min(want, Math.max(0, (u.gap - u.hz * 2 - 4) * 0.85));
+    const yBand = u.y + (u.kind === 'el' ? 5 : 2.5);
+    if (P.mode !== 'fly' && P.pos.y < yBand) {
+      const [ah, lat] = playerRel(u.x, u.z, u.yaw);
+      const latLim = u.kind === 'el' ? 4.2 : 3.4;
+      if (ah > 0 && ah < 22 && lat < latLim) want = Math.min(want, Math.max(0, (ah - 7) * 0.85));
+    }
+    if (u.stun > 0) { u.stun -= dt; want = 0; }
+    u.v += (want - u.v) * Math.min(1, dt * (want < u.v ? 5 : 1.2));
+    u.s += u.v * dt; if (u.s > l.L) u.s -= l.L;
+    let x = l.ax + l.dx * u.s, z = l.az + l.dz * u.s;
+    if (l.ring) { const n = Math.pow(x ** 4 + z ** 4, 0.25); if (n < 96) { const k = 96 / Math.max(n, 0.01); x *= k; z *= k; } }
+    const mx = x - u.bx, mz = z - u.bz;
+    if (!u.init || mx * mx + mz * mz > 400) { u.yaw = Math.atan2(-l.dx, -l.dz); u.init = true; }
+    else if (mx * mx + mz * mz > 1e-6) { const ty = Math.atan2(-mx, -mz); let dy = ty - u.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); u.yaw += dy * Math.min(1, dt * 7); }
+    u.bx = x; u.bz = z;
+    integrateKnock(u, dt);
+    u.x = x + u.kx; u.z = z + u.kz; u.ryaw = u.yaw + u.ky;
+    carP.set(u.x, u.y + (u.kind === 'trolley' ? 1.55 : 1.75), u.z); carQ.setFromAxisAngle(YAX, u.ryaw); carM.compose(carP, carQ, carS);
+    if (u.kind === 'trolley' && traffic.trolleyM) {
+      traffic.trolleyM.setMatrixAt(u.slot, carM);
+      carP.y += 0.55; carM.compose(carP, carQ, carS); traffic.trolleyStripe.setMatrixAt(u.slot, carM);
+    } else if (u.kind === 'el' && traffic.elM) {
+      traffic.elM.setMatrixAt(u.slot, carM);
+      carP.y += 0.35; carM.compose(carP, carQ, carS); traffic.elWin.setMatrixAt(u.slot, carM);
+    }
+  }
+  if (traffic.trolleyM) traffic.trolleyM.instanceMatrix.needsUpdate = true;
+  if (traffic.trolleyStripe) traffic.trolleyStripe.instanceMatrix.needsUpdate = true;
+  if (traffic.elM) traffic.elM.instanceMatrix.needsUpdate = true;
+  if (traffic.elWin) traffic.elWin.instanceMatrix.needsUpdate = true;
 }
 
 // ---------------------------------------------------------------- street race: Boathouse Row → Art Museum → Parkway → City Hall and back
@@ -3165,7 +3284,7 @@ function refreshPanel() {
     optBtn('Auto-Director', 'Cuts between angles', camMode === 'auto', () => setCam('auto')), optBtn('Aerial', 'Slow orbit overhead', camMode === 'aerial', () => setCam('aerial')), optBtn('Follow the street race', 'Chase the race leader', camMode === 'race', () => setCam('race'), 'R'));
   $('carList').replaceChildren(optBtn('Philly Cab', 'The original', carIdx < 0, () => setPlayerCar(-1)), ...MODELS.map((m, i) => optBtn(m.name, 'From AFTERHOURS', carIdx === i, () => { setPlayerCar(i); if (P.mode !== 'drive') setMode('drive'); }, i === 0 ? 'G' : '')));
   $('camScenic').replaceChildren(...SCENIC.map((s, i) => optBtn(s.name, '', camMode === 'scenic' && scenicIdx === i, () => setCam('scenic', i), s.key)));
-  $('gfxOpts').replaceChildren(optBtn('High', 'Shadows + glow', quality.level === 'high', () => setQuality('high')), optBtn('Medium', 'Glow, no shadows', quality.level === 'medium', () => setQuality('medium')), optBtn('Low', 'Fastest', quality.level === 'low', () => setQuality('low')));
+  $('gfxOpts').replaceChildren(optBtn('High', 'Shadows + glow', quality.level === 'high', () => setQuality('high')), optBtn('Medium', 'Glow, no shadows', quality.level === 'medium', () => setQuality('medium')), optBtn('Low', 'Fastest', quality.level === 'low', () => setQuality('low')), optBtn(audio.mute ? 'Muted' : 'Sound on', 'Tap view to start', !audio.mute, () => { unlockAudio(); toggleMute(); }, 'N'));
   $('weatherOpts').replaceChildren(optBtn('Rain', 'Wet roads + showers', rainOn, () => setRain(!rainOn), 'Y'));
 }
 function goTo(tp) {
@@ -3273,6 +3392,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyV') { const i = FOLLOW.findIndex(f => f.id === camMode); setCam(FOLLOW[(i + 1) % FOLLOW.length].id); }
   if (e.code === 'KeyT') setTime(TIME_ORDER[(TIME_ORDER.indexOf(timeId) + 1) % 4]);
   if (e.code === 'KeyY') setRain(!rainOn);
+  if (e.code === 'KeyN') toggleMute();
   if (e.code === 'KeyG') { setPlayerCar(carIdx + 1); if (P.mode !== 'drive') setMode('drive'); }
   if (e.code === 'KeyR') setCam(camMode === 'race' ? 'chase' : 'race');
 });
@@ -3280,7 +3400,7 @@ addEventListener('keyup', e => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 (function lookInput() {
   let id = null, lx = 0, ly = 0;
-  canvas.addEventListener('pointerdown', e => { if (id !== null) return; id = e.pointerId; lx = e.clientX; ly = e.clientY; cam.dragging = true; canvas.setPointerCapture(e.pointerId); canvas.focus(); $('panel').hidden = true; });
+  canvas.addEventListener('pointerdown', e => { unlockAudio(); if (id !== null) return; id = e.pointerId; lx = e.clientX; ly = e.clientY; cam.dragging = true; canvas.setPointerCapture(e.pointerId); canvas.focus(); $('panel').hidden = true; });
   canvas.addEventListener('pointermove', e => { if (e.pointerId !== id) return; cam.yawOff -= (e.clientX - lx) * 0.006; cam.pitch = clamp(cam.pitch + (e.clientY - ly) * 0.004, -0.25, 1.25); lx = e.clientX; ly = e.clientY; cam.lastDrag = performance.now() / 1000; });
   const end = e => { if (e.pointerId !== id) return; id = null; cam.dragging = false; cam.lastDrag = performance.now() / 1000; };
   canvas.addEventListener('pointerup', end); canvas.addEventListener('pointercancel', end);
@@ -3306,6 +3426,41 @@ addEventListener('resize', () => {
   drawMap();
 });
 
+// ---------------------------------------------------------------- audio (starts after first tap — mobile autoplay policy)
+const audio = { ctx: null, unlocked: false, mute: false, master: null, engOsc: null, engGain: null, rainGain: null };
+function noiseBuffer(ctx, sec) {
+  const buf = ctx.createBuffer(1, ctx.sampleRate * sec | 0, ctx.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * 0.35;
+  return buf;
+}
+function unlockAudio() {
+  if (audio.unlocked) return;
+  const Ctx = window.AudioContext || window.webkitAudioContext; if (!Ctx) return;
+  audio.ctx = new Ctx(); audio.master = audio.ctx.createGain(); audio.master.gain.value = 0.5; audio.master.connect(audio.ctx.destination);
+  const amb = audio.ctx.createBufferSource(); amb.buffer = noiseBuffer(audio.ctx, 2); amb.loop = true;
+  const ambF = audio.ctx.createBiquadFilter(); ambF.type = 'lowpass'; ambF.frequency.value = 900;
+  const ambG = audio.ctx.createGain(); ambG.gain.value = 0.1; amb.connect(ambF).connect(ambG).connect(audio.master); amb.start();
+  const rain = audio.ctx.createBufferSource(); rain.buffer = noiseBuffer(audio.ctx, 1.5); rain.loop = true;
+  const rainF = audio.ctx.createBiquadFilter(); rainF.type = 'bandpass'; rainF.frequency.value = 2400; rainF.Q.value = 0.6;
+  audio.rainGain = audio.ctx.createGain(); audio.rainGain.gain.value = 0; rain.connect(rainF).connect(audio.rainGain).connect(audio.master); rain.start();
+  audio.engOsc = audio.ctx.createOscillator(); audio.engOsc.type = 'sawtooth'; audio.engOsc.frequency.value = 60;
+  const engF = audio.ctx.createBiquadFilter(); engF.type = 'lowpass'; engF.frequency.value = 420;
+  audio.engGain = audio.ctx.createGain(); audio.engGain.gain.value = 0;
+  audio.engOsc.connect(engF).connect(audio.engGain).connect(audio.master); audio.engOsc.start();
+  audio.unlocked = true;
+}
+function updateAudio() {
+  if (!audio.unlocked || !audio.ctx) return;
+  audio.master.gain.value = audio.mute ? 0 : 0.5;
+  const spd = Math.abs(P.speed), drive = P.mode === 'drive' || P.mode === 'cycle';
+  if (audio.engGain && audio.engOsc) {
+    audio.engGain.gain.value = drive ? Math.min(0.16, 0.025 + spd * 0.014) : 0;
+    audio.engOsc.frequency.value = 52 + spd * 5.2;
+  }
+  if (audio.rainGain) audio.rainGain.gain.value = rainOn && !audio.mute ? 0.11 : 0;
+}
+function toggleMute() { audio.mute = !audio.mute; updateAudio(); toast(audio.mute ? 'Muted' : 'Sound on'); refreshPanel(); }
+
 // ---------------------------------------------------------------- boot
 const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
 async function boot() {
@@ -3313,13 +3468,14 @@ async function boot() {
   buildGround();
   genGrid(NS, EW, -1505, 1880);
   genGrid(NSW, EWW, -2300, -1640);
+  injectOsmFootprints();
   status('Raising City Hall and the skyline…'); await nextFrame();
   buildLandmarks();
   buildSlabs(); buildBuildings();
   status('Planting autumn trees and street lamps…'); await nextFrame();
   buildTrees(); buildStreetDetail();
   status('Starting traffic…'); await nextFrame();
-  buildTraffic(); buildRigs(); buildRace(); buildRain();
+  buildTraffic(); buildSepta(); buildRigs(); buildRace(); buildRain();
   try {
     const [{ EffectComposer }, { RenderPass }, { UnrealBloomPass }, { OutputPass }] = await Promise.all(['EffectComposer', 'RenderPass', 'UnrealBloomPass', 'OutputPass'].map(f => import(ADDON(f))));
     composer = new EffectComposer(renderer);
@@ -3353,7 +3509,7 @@ let last = performance.now(), hudT = 0, fpsAcc = 0, fpsN = 0, fpsT = -6;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now; const t = now / 1000;
   updateRain(dt);
-  updateTraffic(dt, t); updateRace(dt); updatePlayer(dt); updateRig(dt); updateCamera(dt, t);
+  updateTraffic(dt, t); updateTransit(dt); updateRace(dt); updatePlayer(dt); updateRig(dt); updateCamera(dt, t);
   if (SHOT) { camera.position.copy(SHOT.pos); camera.fov = SHOT.fov; camera.updateProjectionMatrix(); camera.lookAt(SHOT.look); }
   for (const j of JETS) j.o.scale.y = j.h * (0.85 + Math.sin(t * 3 + j.p) * 0.15);
   for (const a of ANIM) a(t, dt);
@@ -3372,6 +3528,7 @@ function frame(now) {
     updateRaceHud();
   }
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) $('toast').style.opacity = 0; }
+  updateAudio();
   if (!$('map').hidden) drawMap();
   // auto quality: drop a level if we stay under ~28 fps
   fpsAcc += dt; fpsN++; fpsT += dt;

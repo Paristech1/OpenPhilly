@@ -25,6 +25,7 @@ OpenPhilly/
 | 8–0 | Scenic shots |
 | T | Time of day (Golden Hour, Midday, Blue Hour, Night) |
 | Y | Rain (wet roads + showers) |
+| N | Mute / unmute sound (tap the view once to start audio) |
 | M | Street Atlas map (click to teleport) |
 
 On phones: on-screen joystick, fly up/down buttons, drag to look.
