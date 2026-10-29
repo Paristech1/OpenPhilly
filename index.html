@@ -3899,7 +3899,28 @@ async function boot() {
       teleport(5, 120, 0);
       shot({ pos: s.pos, look: s.look, fov: s.fov, time: s.time || preset, q: s.q || 'high' });
       const st = (renderer.render(scene, camera), { calls: renderer.info.render.calls, tris: renderer.info.render.triangles });
-      return { ok: st.tris > 4.5e6 && st.tris < 11e6, preset, tris: st.tris, calls: st.calls, detail: DETAIL, onPages };
+      SHOT = null;
+      document.querySelectorAll('.hud,#toast').forEach(el => { el.style.display = ''; });
+      setMode('drive', true);
+      camMode = 'chase';
+      teleport(5, 120, 0);
+      P.yaw = Math.PI; P.speed = 0;
+      setTime(preset, true);
+      setQuality('high', true);
+      const n = 360;
+      for (let i = 0; i < n; i++) {
+        keys.KeyW = 1;
+        simT += 1 / 60;
+        updateTraffic(1 / 60, simT);
+        updateRace(1 / 60);
+        updatePlayer(1 / 60);
+      }
+      keys.KeyW = 0;
+      updateCamera(0.016, performance.now() / 1000);
+      renderer.render(scene, camera);
+      const driveOk = P.pos.z > 205 && Math.abs(P.pos.x) < 55;
+      const triOk = st.tris > 4.5e6 && st.tris < 11e6;
+      return { ok: triOk && driveOk, preset, tris: st.tris, calls: st.calls, detail: DETAIL, onPages, driveZ: P.pos.z, driveOk, triOk };
     } };
   status('Ready'); window.__ready = true;
   $('loader').style.opacity = 0; setTimeout(() => { $('loader').style.display = 'none'; }, 650);
