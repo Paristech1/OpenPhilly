@@ -247,6 +247,8 @@ const CYL6 = new THREE.CylinderGeometry(0.5, 0.55, 1, 12).translate(0, 0.5, 0);
 const CYL16 = new THREE.CylinderGeometry(0.5, 0.55, 1, 16).translate(0, 0.5, 0);
 const LAMP_POLE = new THREE.CylinderGeometry(0.08, 0.1, 1, 16).translate(0, 0.5, 0);
 const LAMP_HEAD = new THREE.SphereGeometry(0.5, 14, 12);
+const PALM_TRUNK = new THREE.CylinderGeometry(0.2, 0.28, 1, 12).translate(0, 0.5, 0);
+const PALM_FROND = new THREE.ConeGeometry(0.48, 3.4, 6, 1, true).translate(0, 1.7, 0);
 const ICO = new THREE.IcosahedronGeometry(1, 1);
 const ICO2 = new THREE.IcosahedronGeometry(1, 2);
 const tri = new THREE.Shape(); tri.moveTo(-0.5, 0); tri.lineTo(0.5, 0); tri.lineTo(0, 1); tri.closePath();
@@ -273,7 +275,10 @@ function lineGlow(day, night) {
   LGLOW.push({ m, day: new THREE.Color(day), night: new THREE.Color(night) }); return m;
 }
 
-const SURF = { wet: { value: 0 }, sunDir: { value: new V3(0, 1, 0) } };
+const SURF = {
+  wet: { value: 0 }, sunDir: { value: new V3(0, 1, 0) },
+  skyTop: { value: new THREE.Color('#2f5d9a') }, skyHor: { value: new THREE.Color('#f3b886') }, reflMix: { value: 0.14 }
+};
 const surfNoiseGLSL = `float surfHash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
 float surfNoise(vec2 p){ vec2 i=floor(p); vec2 f=fract(p); f=f*f*(3.0-2.0*f);
 return mix(mix(surfHash(i), surfHash(i+vec2(1.0,0.0)), f.x), mix(surfHash(i+vec2(0.0,1.0)), surfHash(i+vec2(1.0,1.0)), f.x), f.y); }`;
@@ -282,9 +287,12 @@ function asphaltSurfMat() {
   m.onBeforeCompile = sh => {
     sh.uniforms.uWet = SURF.wet;
     sh.uniforms.uSunDir = SURF.sunDir;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>\nuniform float uWet;\nuniform vec3 uSunDir;\nvarying vec3 vSurfWP;`)
+    sh.uniforms.uSkyTop = SURF.skyTop;
+    sh.uniforms.uSkyHor = SURF.skyHor;
+    sh.uniforms.uReflMix = SURF.reflMix;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>\nuniform float uWet;\nuniform vec3 uSunDir;\nuniform vec3 uSkyTop;\nuniform vec3 uSkyHor;\nuniform float uReflMix;\nvarying vec3 vSurfWP;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>\nvSurfWP = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nuniform float uWet;\nuniform vec3 uSunDir;\nvarying vec3 vSurfWP;\n${surfNoiseGLSL}`)
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nuniform float uWet;\nuniform vec3 uSunDir;\nuniform vec3 uSkyTop;\nuniform vec3 uSkyHor;\nuniform float uReflMix;\nvarying vec3 vSurfWP;\n${surfNoiseGLSL}`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
 float ag = surfNoise(vSurfWP.xz * 0.22) * 0.55 + surfNoise(vSurfWP.xz * 1.35) * 0.35;
 roughnessFactor = mix(roughnessFactor, roughnessFactor * (0.68 + ag * 0.55), 0.92);
@@ -299,9 +307,35 @@ vec3 refl = reflect(vw, nrm);
 float sunSpec = pow(max(dot(refl, normalize(uSunDir)), 0.0), 48.0);
 float wetSheen = surfNoise(vSurfWP.xz * 0.08 + refl.xz * 6.0) * 0.5 + 0.5;
 float streak = sunSpec * wetSheen * uWet * (0.35 + ag2 * 0.25);
-diffuseColor.rgb += vec3(0.22, 0.24, 0.28) * streak;`);
+diffuseColor.rgb += vec3(0.22, 0.24, 0.28) * streak;
+vec3 vw2 = normalize(vViewPosition);
+vec3 nrm2 = normalize(normal);
+float fres = pow(1.0 - max(dot(nrm2, -vw2), 0.0), 2.8);
+vec3 reflDir = reflect(-vw2, nrm2);
+vec3 skyRefl = mix(uSkyHor, uSkyTop, clamp(reflDir.y * 0.55 + 0.45, 0.0, 1.0));
+float envW = uReflMix * (0.25 + uWet * 0.95 + fres * 0.55);
+diffuseColor.rgb = mix(diffuseColor.rgb, skyRefl, envW);`);
   };
   ROAD_MATS.push(m); return m;
+}
+function curbSurfMat() {
+  const m = new THREE.MeshStandardMaterial({ color: '#9a9690', roughness: 0.58, metalness: 0.1 });
+  m.onBeforeCompile = sh => {
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>\nvarying vec3 vSurfWP;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\nvSurfWP = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nvarying vec3 vSurfWP;\n${surfNoiseGLSL}`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+float cg = surfNoise(vSurfWP.xz * 1.8);
+roughnessFactor = mix(roughnessFactor, roughnessFactor * (0.82 + cg * 0.35), 0.88);`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+float cg2 = surfNoise(vSurfWP.xz * 0.45);
+diffuseColor.rgb *= 0.9 + cg2 * 0.12;
+vec3 vw = normalize(vViewPosition);
+vec3 nrm = normalize(normal);
+float edge = pow(1.0 - max(dot(nrm, -vw), 0.0), 1.6);
+diffuseColor.rgb += vec3(0.14, 0.14, 0.16) * edge * (0.35 + cg2 * 0.2);`);
+  };
+  return m;
 }
 function concreteSurfMat() {
   const m = new THREE.MeshStandardMaterial({ color: '#d5cfc4', roughness: 0.94, metalness: 0.02 });
@@ -321,6 +355,7 @@ function winMat(params, seed = 1.5) {
   const m = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.02, ...params });
   m.onBeforeCompile = sh => {
     sh.uniforms.uNight = U.night; sh.uniforms.uLit = U.lit; sh.uniforms.uSeed = { value: seed };
+    sh.uniforms.uSkyTop = SURF.skyTop; sh.uniforms.uSkyHor = SURF.skyHor; sh.uniforms.uReflMix = SURF.reflMix;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
 #ifdef USE_INSTANCING
@@ -343,6 +378,7 @@ vWin = vec2((abs(normal.x) > 0.5 ? position.z * wsc.z : position.x * wsc.x) / 3.
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 uniform float uNight; uniform float uLit;
+uniform vec3 uSkyTop; uniform vec3 uSkyHor; uniform float uReflMix;
 varying vec2 vWin; varying float vSeed; varying float vRoof;
 float wHash(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
@@ -364,8 +400,13 @@ float spandrel = smoothstep(0.8, 0.88, wf.y) * (1.0 - wmask);
 float ledge = smoothstep(0.94, 0.99, wf.y);
 diffuseColor.rgb *= 1.0 - sill * 0.14 - spandrel * 0.2 - ledge * 0.1;
 diffuseColor.rgb *= 1.0 - (1.0 - wmask) * 0.06;
-float wFres = pow(1.0 - max(dot(normalize(normal), normalize(-vViewPosition)), 0.0), 2.8);
-diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.52, 0.64), wmask * wFres * 0.5 * (1.0 - uNight * 0.45));
+float wFres = pow(1.0 - max(dot(normalize(normal), normalize(-vViewPosition)), 0.0), 2.4);
+vec3 wRefl = reflect(normalize(-vViewPosition), normalize(normal));
+vec3 wSky = mix(uSkyHor, uSkyTop, clamp(wRefl.y * 0.55 + 0.45, 0.0, 1.0));
+diffuseColor.rgb = mix(diffuseColor.rgb, wSky, wmask * wFres * uReflMix * (0.55 + 0.35 * (1.0 - uNight)));
+diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.52, 0.64), wmask * wFres * 0.35 * (1.0 - uNight * 0.45));
+float wRecess = (1.0 - wmask) * 0.11;
+diffuseColor.rgb *= 1.0 - wRecess;
 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.05, 0.065, 0.09) + diffuseColor.rgb * 0.12 + vec3(0.05) * wr, wmask * 0.86);
 diffuseColor.rgb *= mix(1.0, 0.6, vRoof);`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
@@ -2487,9 +2528,16 @@ function buildGround() {
 }
 const ROAD_MATS = [];
 
+function arterialMeshBoost(x, z) {
+  const t = Math.min(Math.abs(x) / 240, Math.abs(z) / 240, 1);
+  return 1 + (1 - t) * 0.95;
+}
 function mergePatchGeo(pos, uv, ind, x0, x1, z0, z1, segX, segZ, yAt) {
   const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
   if (streetSkip(cx, cz, 10)) return;
+  const boost = arterialMeshBoost(cx, cz);
+  segX = Math.max(segX, Math.round(segX * boost));
+  segZ = Math.max(segZ, Math.round(segZ * boost));
   const base = pos.length / 3;
   for (let j = 0; j <= segZ; j++) for (let i = 0; i <= segX; i++) {
     const u = i / segX, v = j / segZ;
@@ -2511,7 +2559,9 @@ function buildStreetSurfaces() {
     const z0 = e.z - e.w / 2, z1 = e.z + e.w / 2, segZ = Math.max(3, Math.round(e.w / 1.6));
     for (let x = e.x0; x < e.x1; x += 42) {
       const x1 = Math.min(e.x1, x + 42);
-      mergePatchGeo(pos, uv, ind, x, x1, z0, z1, Math.max(4, Math.round((x1 - x) / 5.5)), segZ, yAsphalt);
+      const cx = (x + x1) / 2;
+      const step = e.name === 'Market St' || Math.abs(cx) < 260 ? 3.8 : 5.5;
+      mergePatchGeo(pos, uv, ind, x, x1, z0, z1, Math.max(4, Math.round((x1 - x) / step)), segZ, yAsphalt);
     }
   };
   const addNS = s => {
@@ -2519,7 +2569,9 @@ function buildStreetSurfaces() {
     const x0 = s.x - s.w / 2, x1 = s.x + s.w / 2, segX = Math.max(3, Math.round(s.w / 1.6));
     for (let z = z0; z < z1; z += 42) {
       const z2 = Math.min(z1, z + 42);
-      mergePatchGeo(pos, uv, ind, x0, x1, z, z2, segX, Math.max(4, Math.round((z2 - z) / 5.5)), yAsphalt);
+      const cz = (z + z2) / 2;
+      const step = s.name === 'Broad St' || Math.abs(cz) < 260 ? 3.8 : 5.5;
+      mergePatchGeo(pos, uv, ind, x0, x1, z, z2, segX, Math.max(4, Math.round((z2 - z) / step)), yAsphalt);
     }
   };
   for (const e of EW) addEW(e);
@@ -2564,8 +2616,9 @@ function buildBeveledCurbs() {
     const b = blockAt(xc, (z0 + z1) / 2);
     if (!b || b.k !== 'walk') return;
     const sw = GRD.swW;
-    const segX = Math.max(3, Math.round((x1 - x0) / 5));
-    const segZ = Math.max(3, Math.round((z1 - z0) / 5));
+    const boost = arterialMeshBoost(xc, (z0 + z1) / 2);
+    const segX = Math.max(3, Math.round((x1 - x0) / (5 / boost)));
+    const segZ = Math.max(3, Math.round((z1 - z0) / (5 / boost)));
     mergeCurbRun(pos, ind, x0, z0 + 0.12, x1, z0 + 0.12, 0, 1, segX);
     mergeCurbRun(pos, ind, x0, z1 - 0.12, x1, z1 - 0.12, 0, -1, segX);
     mergeCurbRun(pos, ind, x0 + 0.12, z0 + sw, x0 + 0.12, z1 - sw, 1, 0, segZ);
@@ -2576,8 +2629,57 @@ function buildBeveledCurbs() {
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setIndex(ind);
   geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, mat('#8a8780', { roughness: 0.86 }));
+  const mesh = new THREE.Mesh(geo, curbSurfMat());
   mesh.castShadow = mesh.receiveShadow = true; mesh.frustumCulled = false; scene.add(mesh);
+}
+
+function buildArterialPalms() {
+  const sites = [];
+  const place = (x, z) => {
+    if (streetSkip(x, z, 5) || treeBlocked(x, z)) return;
+    if (!onSidewalk(x, z)) return;
+    sites.push({ x, z, h: rr(5.8, 7.8), ry: rnd() * 6 });
+  };
+  const broad = NS.find(s => s.name === 'Broad St');
+  if (broad) {
+    for (let z = broad.z0 + 50; z < broad.z1 - 40; z += 34) {
+      for (const side of [-1, 1]) place(broad.x + side * (broad.w / 2 + GRD.swW * 0.58), z + rr(-1.5, 1.5));
+    }
+  }
+  const market = EW.find(e => e.name === 'Market St');
+  if (market) {
+    for (let x = market.x0 + 55; x < market.x1 - 55; x += 40) {
+      if (streetSkip(x, market.z, 6)) continue;
+      for (const side of [-1, 1]) place(x + rr(-2, 2), market.z + side * (market.w / 2 + GRD.swW * 0.58));
+    }
+  }
+  if (!sites.length) return;
+  const frondsPer = 8;
+  const trunkMat = mat('#7a6348', { roughness: 0.8, metalness: 0.02 });
+  const frondMat = new THREE.MeshStandardMaterial({ color: '#3a6830', roughness: 0.76, metalness: 0.03, side: THREE.DoubleSide });
+  const trunks = new THREE.InstancedMesh(PALM_TRUNK, trunkMat, sites.length);
+  const fronds = new THREE.InstancedMesh(PALM_FROND, frondMat, sites.length * frondsPer);
+  let fi = 0;
+  sites.forEach((s, i) => {
+    const ty = gradeSurfaceY(s.x, s.z);
+    dummy.rotation.set(0, s.ry, 0);
+    dummy.position.set(s.x, ty, s.z);
+    dummy.scale.set(rr(0.9, 1.05), s.h, rr(0.9, 1.05));
+    dummy.updateMatrix(); trunks.setMatrixAt(i, dummy.matrix);
+    dummy.rotation.order = 'YXZ';
+    for (let f = 0; f < frondsPer; f++) {
+      const a = (f / frondsPer) * Math.PI * 2 + s.ry * 0.4;
+      const droop = 0.52 + rnd() * 0.22, rad = 0.28 + rnd() * 0.18;
+      dummy.rotation.set(a, -droop, rnd() * 0.06);
+      dummy.position.set(s.x + Math.sin(a) * rad, ty + s.h * 0.9, s.z + Math.cos(a) * rad);
+      dummy.scale.set(rr(0.82, 1.18), rr(0.95, 1.25), rr(0.82, 1.12));
+      dummy.updateMatrix(); fronds.setMatrixAt(fi++, dummy.matrix);
+    }
+    dummy.rotation.order = 'XYZ';
+  });
+  trunks.castShadow = fronds.castShadow = true; fronds.receiveShadow = true;
+  trunks.frustumCulled = fronds.frustumCulled = false;
+  scene.add(trunks, fronds);
 }
 
 function buildSidewalkSurfaces() {
@@ -2631,6 +2733,36 @@ function buildBuildings() {
   });
   geo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seeds, 1));
   im.castShadow = im.receiveShadow = true; im.frustumCulled = false; scene.add(im);
+}
+
+function buildFacadeTrim() {
+  const nearArterial = b => b.h >= 18 && (Math.abs(b.x) < 340 || Math.abs(b.z) < 340);
+  const bases = B.filter(b => nearArterial(b));
+  const cornices = bases.filter(b => b.h >= 32);
+  if (!bases.length) return;
+  const baseMat = mat('#ffffff', { roughness: 0.78, metalness: 0.04 });
+  const cornMat = mat('#e8e2d8', { roughness: 0.48, metalness: 0.14 });
+  const baseIM = new THREE.InstancedMesh(BOXC, baseMat, bases.length);
+  const cornIM = new THREE.InstancedMesh(BOXC, cornMat, cornices.length);
+  bases.forEach((b, i) => {
+    const bh = Math.max(1.2, b.h * 0.065);
+    dummy.rotation.set(0, 0, 0);
+    dummy.position.set(b.x, b.y + bh / 2, b.z);
+    dummy.scale.set(b.w * 1.015, bh, b.d * 1.015);
+    dummy.updateMatrix(); baseIM.setMatrixAt(i, dummy.matrix);
+    tmpC.set(b.c).offsetHSL(0, 0, -0.14); baseIM.setColorAt(i, tmpC);
+  });
+  cornices.forEach((b, i) => {
+    const ch = Math.max(0.9, b.h * 0.032);
+    dummy.rotation.set(0, 0, 0);
+    dummy.position.set(b.x, b.y + b.h - ch / 2, b.z);
+    dummy.scale.set(b.w * 1.035, ch, b.d * 1.035);
+    dummy.updateMatrix(); cornIM.setMatrixAt(i, dummy.matrix);
+    tmpC.set(b.c).offsetHSL(0, -0.02, 0.08); cornIM.setColorAt(i, tmpC);
+  });
+  baseIM.castShadow = cornIM.castShadow = true; baseIM.receiveShadow = cornIM.receiveShadow = true;
+  baseIM.frustumCulled = cornIM.frustumCulled = false;
+  scene.add(baseIM, cornIM);
 }
 
 function buildTrees() {
@@ -3320,6 +3452,7 @@ const FOLLOW = [{ id: 'chase', name: '3rd-person chase', key: '5' }, { id: 'low'
 const raceCamPos = new V3(), raceCamLook = new V3();
 const steps = mw(64, 0);
 const SCENIC = [
+  { name: 'Broad & Market (golden)', key: '7', pos: [-14, 2.4, 98], look: [42, 10, 118], fov: 52, time: 'golden', q: 'high' },
   { name: 'City Hall from Broad St', key: '8', pos: [-8, 3, 390], look: [0, 112, -59], fov: 46 },
   { name: 'Art Museum steps', key: '9', pos: [steps.x, 15, steps.z], look: [0, 100, 0], fov: 44 },
   { name: 'Ben Franklin Bridge', key: '0', pos: [1866, 5, -318], look: [2350, 70, -400], fov: 52 },
@@ -3394,14 +3527,20 @@ function updateCamera(dt, t) {
   if (Math.abs(camera.fov - fov) > 0.05) { camera.fov += (fov - camera.fov) * Math.min(1, dt * 3); camera.updateProjectionMatrix(); }
 }
 function setCam(id, idx) {
-  camMode = id; if (id === 'scenic') scenicIdx = idx; autoT = 0; autoShot = 0; flybyPos = null;
+  camMode = id; if (id === 'scenic') {
+    scenicIdx = idx;
+    const s = SCENIC[idx];
+    if (s.time) setTime(s.time, true);
+    if (s.q) setQuality(s.q, true);
+  }
+  autoT = 0; autoShot = 0; flybyPos = null;
   refreshPanel();
   toast(id === 'scenic' ? SCENIC[idx].name : id === 'auto' ? 'Auto-Director' : id === 'aerial' ? 'Aerial' : id === 'race' ? 'Following the street race' : FOLLOW.find(f => f.id === id).name);
 }
 
 // ---------------------------------------------------------------- time of day
 const TIMES = {
-  golden: { label: 'Golden hour', el: 8, az: 245, sun: '#ffbd7a', sunI: 3.4, hTop: '#ffd9b0', hBot: '#6b4a34', hI: 1.0, top: '#2f5d9a', hor: '#f3b886', bot: '#5a4a40', fog: '#e2b48c', fogD: 0.00032, env: 0.7, night: 0.22, lit: 0.25, lamps: 0.15, stars: 0, bloom: 0.32, exp: 1.0, sunVis: 1, shadow: true, wet: 0 },
+  golden: { label: 'Golden hour', el: 8, az: 245, sun: '#ffbd7a', sunI: 3.4, hTop: '#ffd9b0', hBot: '#6b4a34', hI: 1.0, top: '#2f5d9a', hor: '#f3b886', bot: '#5a4a40', fog: '#e2b48c', fogD: 0.00032, env: 0.7, night: 0.22, lit: 0.25, lamps: 0.15, stars: 0, bloom: 0.32, exp: 1.0, sunVis: 1, shadow: true, wet: 0.18 },
   midday: { label: 'Midday', el: 58, az: 165, sun: '#fff6e8', sunI: 3.2, hTop: '#cfe3ff', hBot: '#8a7a62', hI: 1.15, top: '#2a63b4', hor: '#c4dbf0', bot: '#7a8a96', fog: '#bcd2e6', fogD: 0.00024, env: 1.0, night: 0, lit: 0, lamps: 0, stars: 0, bloom: 0.08, exp: 1.0, sunVis: 1, shadow: true, wet: 0 },
   blue: { label: 'Blue hour', el: -5, az: 255, sun: '#8ea4e0', sunI: 0.55, hTop: '#5a72c0', hBot: '#22202e', hI: 0.75, top: '#0f1c46', hor: '#6f6aa8', bot: '#1a1828', fog: '#3e4683', fogD: 0.00036, env: 0.45, night: 0.75, lit: 0.5, lamps: 1, stars: 0.25, bloom: 0.55, exp: 1.05, sunVis: 0, shadow: false, wet: 0.5 },
   night: { label: 'Night', el: 38, az: 140, sun: '#9fb2e0', sunI: 0.32, hTop: '#2c3566', hBot: '#0b0b12', hI: 0.45, top: '#04060f', hor: '#1d2142', bot: '#07080c', fog: '#15182c', fogD: 0.00045, env: 0.18, night: 0.85, lit: 0.38, lamps: 1.1, stars: 0.6, bloom: 0.5, exp: 1.0, sunVis: 0.12, shadow: false, wet: 0.7 }
@@ -3427,8 +3566,15 @@ function setTime(id, quiet) {
   for (const m of ROAD_MATS) { m.roughness = 0.92 - T.wet * 0.55; m.metalness = T.wet * 0.25; }
   SURF.wet.value = T.wet;
   SURF.sunDir.value.copy(sunDir);
+  SURF.skyTop.value.set(T.top);
+  SURF.skyHor.value.set(T.hor);
+  SURF.reflMix.value = id === 'golden' ? 0.24 : id === 'midday' ? 0.14 : id === 'blue' ? 0.3 : 0.38;
   renderer.toneMappingExposure = T.exp;
-  if (bloomPass) bloomPass.strength = T.bloom;
+  if (bloomPass) {
+    bloomPass.strength = T.bloom;
+    bloomPass.threshold = id === 'golden' ? 0.68 : id === 'night' || id === 'blue' ? 0.42 : 0.82;
+    bloomPass.radius = id === 'golden' ? 0.58 : 0.46;
+  }
   if (envRT) envRT.dispose(); envRT = pmrem.fromScene(envScene, 0.04, 0.1, 1000); scene.environment = envRT.texture;
   if (rigs.drive) rigs.drive.spot.intensity = T.lamps > 0 ? 60 : 0;
   refreshPanel();
@@ -3687,9 +3833,9 @@ async function boot() {
   buildSidewalkSurfaces();
   status('Raising City Hall and the skyline…'); await nextFrame();
   buildLandmarks();
-  buildSlabs(); buildBuildings();
+  buildSlabs(); buildBuildings(); buildFacadeTrim();
   status('Planting autumn trees and street lamps…'); await nextFrame();
-  buildTrees(); buildStreetDetail(); buildBeveledCurbs();
+  buildTrees(); buildArterialPalms(); buildStreetDetail(); buildBeveledCurbs();
   status('Starting traffic…'); await nextFrame();
   buildTraffic(); buildRigs(); buildRace();
   try {
