@@ -30,9 +30,11 @@ Philadelphia remix of mrdoob's Slop New York (MIT). Single self-contained three.
 
 ## 7. Testing
 - Headless Chromium (SwiftShader) harness with local three; screenshot each time preset; console-error check.
+- Run from repo root: `npm install && npm run test:harness` (writes PNGs + `report.json` under `test-output/`).
 
 ## 8. Deployment
 - Static single file (`index.html`); originally published as a private claude.ai artifact.
 
 ## 9. Iteration ideas
-- Real OSM footprints for Center City, SEPTA trolleys/El, audio, rain + wet roads, AFTERHOURS car port.
+- Done: AFTERHOURS car port; rain (**Y**); SEPTA trolleys (Market, Spring Garden, Chestnut) + Market–Frankford El (elevated structure + trains); procedural audio after first tap (**N** mute); pre-baked OSM footprints in Rittenhouse grid with zone fallback elsewhere.
+- Expand OSM coverage beyond the Rittenhouse sample bbox.
