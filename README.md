@@ -27,6 +27,10 @@ OpenPhilly/
 
 On phones: on-screen joystick, fly up/down buttons, drag to look.
 
+## Landmarks
+
+City Hall · Comcast Technology Center · Comcast Center · One & Two Liberty Place · BNY Mellon Center · Three Logan Square · Commerce Square · PSFS Building · Independence Hall, Congress Hall & Old City Hall · Liberty Bell Center · National Constitution Center · Christ Church · Rittenhouse, Washington & Franklin Squares · LOVE Park · Logan Circle (Swann Fountain) · Cathedral Basilica · Free Library · Franklin Institute · Eakins Oval · Philadelphia Museum of Art (72 steps) · Fairmount Water Works · Boathouse Row & Turtle Rock Lighthouse · Ben Franklin Bridge · Reading Terminal Market · Convention Center · Chinatown Friendship Gate · Italian Market · South Street · 30th Street Station · Cira Centre · FMC Tower · Moshulu · USS Olympia & Becuna · RiverRink · Spruce Street Harbor Park
+
 ## Notes
 
 - Stylized scale (~130 m per numbered block), not survey-accurate.
