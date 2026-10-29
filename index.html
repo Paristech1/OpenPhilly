@@ -298,21 +298,22 @@ function asphaltSurfMat() {
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nuniform float uWet;\nuniform vec3 uSunDir;\nuniform vec3 uSkyTop;\nuniform vec3 uSkyHor;\nuniform float uReflMix;\nuniform float uLamps;\nvarying vec3 vSurfWP;\n${surfNoiseGLSL}`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
 float ag = surfNoise(vSurfWP.xz * 0.22) * 0.55 + surfNoise(vSurfWP.xz * 1.35) * 0.35;
-roughnessFactor = mix(roughnessFactor, roughnessFactor * (0.68 + ag * 0.55), 0.92);
+roughnessFactor = mix(roughnessFactor, roughnessFactor * (0.68 + ag * 0.55), 0.92);`)
+      .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
 metalnessFactor = mix(metalnessFactor, 0.08 + ag * 0.12, uWet * 0.85);`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 float ag2 = surfNoise(vSurfWP.xz * 0.55);
 diffuseColor.rgb *= 0.86 + ag2 * 0.18;
 diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.75, 0.78, 0.82), uWet * 0.35);
 vec3 vw = normalize(vViewPosition);
-vec3 nrm = normalize(normal);
+vec3 nrm = normalize(vNormal);
 vec3 refl = reflect(vw, nrm);
 float sunSpec = pow(max(dot(refl, normalize(uSunDir)), 0.0), 48.0);
 float wetSheen = surfNoise(vSurfWP.xz * 0.08 + refl.xz * 6.0) * 0.5 + 0.5;
 float streak = sunSpec * wetSheen * uWet * (0.35 + ag2 * 0.25);
 diffuseColor.rgb += vec3(0.22, 0.24, 0.28) * streak;
 vec3 vw2 = normalize(vViewPosition);
-vec3 nrm2 = normalize(normal);
+vec3 nrm2 = normalize(vNormal);
 float fres = pow(1.0 - max(dot(nrm2, -vw2), 0.0), 2.8);
 vec3 reflDir = reflect(-vw2, nrm2);
 vec3 skyRefl = mix(uSkyHor, uSkyTop, clamp(reflDir.y * 0.55 + 0.45, 0.0, 1.0));
@@ -337,7 +338,7 @@ roughnessFactor = mix(roughnessFactor, roughnessFactor * (0.82 + cg * 0.35), 0.8
 float cg2 = surfNoise(vSurfWP.xz * 0.45);
 diffuseColor.rgb *= 0.9 + cg2 * 0.12;
 vec3 vw = normalize(vViewPosition);
-vec3 nrm = normalize(normal);
+vec3 nrm = normalize(vNormal);
 float edge = pow(1.0 - max(dot(nrm, -vw), 0.0), 1.6);
 diffuseColor.rgb += vec3(0.14, 0.14, 0.16) * edge * (0.35 + cg2 * 0.2);`);
   };
@@ -369,7 +370,8 @@ function lanePaintMat() {
     sh.uniforms.uWet = SURF.wet;
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nuniform float uNight;\nuniform float uLamps;\nuniform float uWet;`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-roughnessFactor = mix(roughnessFactor, 0.12, uNight * 0.55 + uWet * 0.35);
+roughnessFactor = mix(roughnessFactor, 0.12, uNight * 0.55 + uWet * 0.35);`)
+      .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
 metalnessFactor = mix(metalnessFactor, 0.45, uNight * 0.4 + uWet * 0.25);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
 totalEmissiveRadiance += diffuseColor.rgb * uNight * uLamps * 0.08;`);
@@ -427,8 +429,8 @@ float spandrel = smoothstep(0.8, 0.88, wf.y) * (1.0 - wmask);
 float ledge = smoothstep(0.94, 0.99, wf.y);
 diffuseColor.rgb *= 1.0 - sill * 0.14 - spandrel * 0.2 - ledge * 0.1;
 diffuseColor.rgb *= 1.0 - (1.0 - wmask) * 0.06;
-float wFres = pow(1.0 - max(dot(normalize(normal), normalize(-vViewPosition)), 0.0), 2.4);
-vec3 wRefl = reflect(normalize(-vViewPosition), normalize(normal));
+float wFres = pow(1.0 - max(dot(normalize(vNormal), normalize(-vViewPosition)), 0.0), 2.4);
+vec3 wRefl = reflect(normalize(-vViewPosition), normalize(vNormal));
 vec3 wSky = mix(uSkyHor, uSkyTop, clamp(wRefl.y * 0.55 + 0.45, 0.0, 1.0));
 diffuseColor.rgb = mix(diffuseColor.rgb, wSky, wmask * wFres * uReflMix * (0.55 + 0.35 * (1.0 - uNight)));
 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.52, 0.64), wmask * wFres * 0.35 * (1.0 - uNight * 0.45));
