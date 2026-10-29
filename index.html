@@ -427,6 +427,57 @@ const SBRIDGES = [{ z: -80, w: 22 }, { z: 0, w: 28 }, { z: 100, w: 14 }, { z: 20
 const onSchBridge = z => SBRIDGES.some(b => Math.abs(z - b.z) < b.w / 2 + 1);
 function isWater(x, z) { return (x > SCH.x0 && x < SCH.x1 && !onSchBridge(z)) || (x > DEL.x0 && x < DEL.x1); }
 
+// street crown, gutters, and raised perimeter sidewalks (~4 in / 10 cm)
+const GRD = { lot: 0, street: 0, sw: 0.105, swW: 2.45, slabH: 0.12, curbH: 0.14, crown: 0.014, gutter: 0.018 };
+const BLOCKS = [];
+function streetSkip(x, z, m = 0) {
+  return (Math.abs(x) < 80 + m && Math.abs(z) < 80 + m) || inMuseum(x, z, 6 + m) || inOval(x, z, 4 + m)
+    || Math.hypot(x - LC.x, z - LC.z) < 72 + m || distSeg(x, z, PS, PE) < 28 + m || isWater(x, z);
+}
+function isOnStreet(x, z, pad = 0) {
+  if (streetSkip(x, z)) return false;
+  for (const e of EW) if (x >= e.x0 && x <= e.x1 && Math.abs(z - e.z) <= e.w / 2 + pad) return true;
+  for (const e of EWW) if (x >= e.x0 && x <= e.x1 && Math.abs(z - e.z) <= e.w / 2 + pad) return true;
+  for (const s of NS) if (z >= s.z0 && z <= s.z1 && Math.abs(x - s.x) <= s.w / 2 + pad) return true;
+  for (const s of NSW) if (z >= (s.z0 ?? -9999) && z <= (s.z1 ?? 9999) && Math.abs(x - s.x) <= s.w / 2 + pad) return true;
+  return false;
+}
+function blockAt(x, z) {
+  for (const b of BLOCKS) if (x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1) return b;
+  return null;
+}
+function onSidewalk(x, z) {
+  const b = blockAt(x, z);
+  if (!b) return false;
+  if (b.k !== 'walk') return b.k === 'plaza' || b.k === 'park' || b.k === 'lawn' || b.k === 'river';
+  const w = GRD.swW;
+  return x <= b.x0 + w || x >= b.x1 - w || z <= b.z0 + w || z >= b.z1 - w;
+}
+function streetSurfaceY(x, z) {
+  let bestD = 1e9, halfW = 7;
+  for (const e of EW.concat(EWW)) {
+    if (x < e.x0 || x > e.x1) continue;
+    const d = Math.abs(z - e.z);
+    if (d <= e.w / 2 + 0.4 && d < bestD) { bestD = d; halfW = e.w / 2; }
+  }
+  for (const s of NS.concat(NSW)) {
+    if (z < (s.z0 ?? -9999) || z > (s.z1 ?? 9999)) continue;
+    const d = Math.abs(x - s.x);
+    if (d <= s.w / 2 + 0.4 && d < bestD) { bestD = d; halfW = s.w / 2; }
+  }
+  const t = clamp(bestD / Math.max(halfW, 1), 0, 1);
+  const crown = (1 - t * t) * GRD.crown;
+  const gutter = t > 0.78 ? ((t - 0.78) / 0.22) * GRD.gutter : 0;
+  return GRD.street + crown - gutter;
+}
+function gradeSurfaceY(x, z) {
+  if (isOnStreet(x, z)) return streetSurfaceY(x, z);
+  if (onSidewalk(x, z)) return GRD.sw;
+  const b = blockAt(x, z);
+  if (b && (b.k === 'plaza' || b.k === 'park' || b.k === 'lawn')) return GRD.sw * 0.35;
+  return GRD.lot;
+}
+
 // solids: ground, museum plateau + steps, bridge deck
 function solidsAt(x, z, out) {
   out.length = 0; out.push(0, -50);
@@ -437,7 +488,14 @@ function solidsAt(x, z, out) {
   return out;
 }
 const SOL = [];
-function groundAt(x, z, y) { solidsAt(x, z, SOL); let g = -Infinity; for (let i = 0; i < SOL.length; i += 2) if (SOL[i] <= y + 1.3 && SOL[i] > g) g = SOL[i]; return g === -Infinity ? 0 : g; }
+function groundAt(x, z, y) {
+  solidsAt(x, z, SOL);
+  let g = -Infinity;
+  for (let i = 0; i < SOL.length; i += 2) if (SOL[i] <= y + 1.3 && SOL[i] > g) g = SOL[i];
+  if (g === -Infinity) return gradeSurfaceY(x, z);
+  if (g < 0.05) return Math.max(g, gradeSurfaceY(x, z));
+  return g;
+}
 function topAt(x, z) { solidsAt(x, z, SOL); let g = 0; for (let i = 0; i < SOL.length; i += 2) g = Math.max(g, SOL[i]); return g; }
 function blockedSolid(x, z, y) { solidsAt(x, z, SOL); for (let i = 0; i < SOL.length; i += 2) if (y < SOL[i] - 1.3 && y + 1.7 > SOL[i + 1]) return true; return false; }
 
@@ -523,7 +581,10 @@ function genBlock(x0, x1, z0, z1) {
   const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
   const park = parkAt(cx, cz);
   if (inMuseum(cx, cz, -10)) return;
-  SLABS.push({ x0, x1, z0, z1, k: park ? park.k : 'walk' });
+  const bk = park ? park.k : 'walk';
+  BLOCKS.push({ x0, x1, z0, z1, k: bk });
+  const sw = GRD.swW, sx0 = x0 + sw, sx1 = x1 - sw, sz0 = z0 + sw, sz1 = z1 - sw;
+  if (sx1 - sx0 > 4 && sz1 - sz0 > 4) SLABS.push({ x0: sx0, x1: sx1, z0: sz0, z1: sz1, k: bk });
   if (park) {
     if (park.k === 'park' || park.k === 'river') {
       for (let x = x0 + 6; x < x1 - 4; x += 11) for (let z = z0 + 6; z < z1 - 4; z += 11) {
@@ -600,6 +661,19 @@ function genGrid(nsList, ewList, xa, xb) {
     for (let j = 0; j < lines.length - 1; j++) {
       const c = lines[j], d = lines[j + 1];
       genBlock(a.x + a.w / 2, b.x - b.w / 2, c.z + c.w / 2, d.z - d.w / 2);
+    }
+  }
+}
+function forEachBlock(fn) {
+  for (const [nsList, ewList, xa, xb] of [[NS, EW, -1505, 1880], [NSW, EWW, -2300, -1640]]) {
+    const cols = [{ x: xa, w: 0 }, ...nsList, { x: xb, w: 0 }];
+    for (let i = 0; i < cols.length - 1; i++) {
+      const a = cols[i], b = cols[i + 1], xc = (a.x + b.x) / 2;
+      const lines = ewList.filter(e => xc > e.x0 && xc < e.x1).sort((p, q) => p.z - q.z);
+      for (let j = 0; j < lines.length - 1; j++) {
+        const c = lines[j], d = lines[j + 1];
+        fn(a.x + a.w / 2, b.x - b.w / 2, c.z + c.w / 2, d.z - d.w / 2, xc, c, d, a, b);
+      }
     }
   }
 }
@@ -2321,7 +2395,7 @@ function buildLandmarks() {
 
 function buildGround() {
   const grass = mat('#5a6838', { roughness: 1 });
-  const asphalt = mat('#2b2c31', { roughness: 0.92 });
+  const asphalt = mat('#26272c', { roughness: 0.94 });
   ROAD_MATS.push(asphalt);
   // non-overlapping tiles (x0, x1, z0, z1, material) so nothing z-fights
   const tiles = [
@@ -2329,7 +2403,7 @@ function buildGround() {
     [-1505, 1880, -7000, -860, grass], [-1505, 1880, -860, 1160, asphalt], [-1505, 1880, 1160, 7000, grass],
     [3050, 9000, -7000, 7000, grass]
   ];
-  for (const [x0, x1, z0, z1, m] of tiles) { const o = box(m, x1 - x0, 4, z1 - z0, (x0 + x1) / 2, -4, (z0 + z1) / 2, 0, false); o.castShadow = false; }
+  for (const [x0, x1, z0, z1, m] of tiles) { const o = box(m, x1 - x0, 4, z1 - z0, (x0 + x1) / 2, -4.02, (z0 + z1) / 2, 0, false); o.castShadow = false; }
   const water = new THREE.Mesh(new THREE.PlaneGeometry(20000, 14000).rotateX(-Math.PI / 2), waterMat);
   water.position.y = -1.1; water.receiveShadow = true; scene.add(water);
 }
@@ -2338,7 +2412,13 @@ const ROAD_MATS = [];
 function buildSlabs() {
   const cols = { walk: '#8f8b83', park: '#56683a', river: '#5c6c3c', lawn: '#62773f', plaza: '#a9a294' };
   const im = new THREE.InstancedMesh(BOX, mat('#ffffff', { roughness: 0.95 }), SLABS.length);
-  SLABS.forEach((s, i) => { dummy.position.set((s.x0 + s.x1) / 2, 0, (s.z0 + s.z1) / 2); dummy.rotation.set(0, 0, 0); dummy.scale.set(s.x1 - s.x0, 0.15, s.z1 - s.z0); dummy.updateMatrix(); im.setMatrixAt(i, dummy.matrix); im.setColorAt(i, tmpC.set(cols[s.k])); });
+  SLABS.forEach((s, i) => {
+    const lift = s.k === 'walk' ? GRD.lot : GRD.sw * 0.35;
+    dummy.position.set((s.x0 + s.x1) / 2, lift - GRD.slabH / 2, (s.z0 + s.z1) / 2);
+    dummy.rotation.set(0, 0, 0);
+    dummy.scale.set(s.x1 - s.x0, GRD.slabH, s.z1 - s.z0);
+    dummy.updateMatrix(); im.setMatrixAt(i, dummy.matrix); im.setColorAt(i, tmpC.set(cols[s.k]));
+  });
   im.receiveShadow = true; im.frustumCulled = false; scene.add(im);
 }
 
@@ -2377,25 +2457,103 @@ function buildTrees() {
 const LAMPS = [];
 let poolMat, lampHeadMat;
 function buildStreetDetail() {
-  const dashes = [], walks = [];
-  const skip = (x, z) => (Math.abs(x) < 80 && Math.abs(z) < 80) || inMuseum(x, z, 6) || inOval(x, z, 2) || Math.hypot(x - LC.x, z - LC.z) < 70 || isWater(x, z);
+  const dashes = [], walks = [], curbs = [], cross = [], covers = [], gutters = [];
+  const skip = (x, z) => streetSkip(x, z, 0);
+  const paintY = (x, z) => streetSurfaceY(x, z) + 0.012;
+  const sw = GRD.swW;
   const addEW = (e, nsl) => {
-    if (e.w >= 20) for (let x = e.x0 + 4; x < e.x1 - 4; x += 4) { if (nsl.some(s => Math.abs(s.x - x) < s.w / 2 + 3) || skip(x, e.z)) continue; dashes.push([x, e.z - 0.25, 4, 0.14, '#e8b923'], [x, e.z + 0.25, 4, 0.14, '#e8b923']); }
+    if (e.w >= 20) {
+      for (let x = e.x0 + 4; x < e.x1 - 4; x += 4) {
+        if (nsl.some(s => Math.abs(s.x - x) < s.w / 2 + 3) || skip(x, e.z)) continue;
+        const y = paintY(x, e.z);
+        dashes.push([x, e.z - e.w / 8, 4, 0.12, '#e8b923', y], [x, e.z + e.w / 8, 4, 0.12, '#e8b923', y]);
+      }
+      if (e.w >= 24) for (let x = e.x0 + 8; x < e.x1 - 8; x += 38) {
+        if (skip(x, e.z) || nsl.some(s => Math.abs(s.x - x) < s.w / 2 + 4)) continue;
+        covers.push([x, e.z, 0.85, '#3a3b40', paintY(x, e.z)]);
+      }
+    } else {
+      for (let x = e.x0 + 10; x < e.x1 - 10; x += 42) if (!skip(x, e.z)) covers.push([x, e.z, 0.72, '#38393e', paintY(x, e.z)]);
+    }
     for (const s of nsl) {
       if (s.x < e.x0 || s.x > e.x1 || e.z < (s.z0 ?? -9999) || e.z > (s.z1 ?? 9999) || skip(s.x, e.z)) continue;
-      for (const sx of [-1, 1]) for (const k of [-1, 1]) walks.push([s.x + sx * (s.w / 2 + 2.5) + k * 1.4, e.z, 0.35, e.w, '#e9e6de']);
-      for (const sz of [-1, 1]) for (const k of [-1, 1]) walks.push([s.x, e.z + sz * (e.w / 2 + 2.5) + k * 1.4, s.w, 0.35, '#e9e6de']);
-      LAMPS.push([s.x + s.w / 2 + 1.4, e.z + e.w / 2 + 1.4], [s.x - s.w / 2 - 1.4, e.z - e.w / 2 - 1.4]);
+      const lx = s.x + (s.w / 2 + sw * 0.55) * (s.x < e.x0 + (e.x1 - e.x0) / 2 ? -1 : 1);
+      LAMPS.push([s.x + s.w / 2 + sw * 0.35, e.z + e.w / 2 + sw * 0.35], [s.x - s.w / 2 - sw * 0.35, e.z - e.w / 2 - sw * 0.35]);
+      for (let k = -1; k <= 1; k += 2) {
+        const cx = s.x + k * (s.w / 2 + sw * 0.45), cz = e.z;
+        for (let i = -e.w / 2 + 0.8; i < e.w / 2 - 0.4; i += 0.95) cross.push([cx, cz + i, 0.55, 2.2, '#f2f0e8', paintY(cx, cz + i), 0]);
+        for (let i = -s.w / 2 + 0.8; i < s.w / 2 - 0.4; i += 0.95) cross.push([s.x + i, e.z + k * (e.w / 2 + 0.35), 2.2, 0.55, '#f2f0e8', paintY(s.x + i, e.z), Math.PI / 2]);
+      }
     }
   };
   for (const e of EW) addEW(e, NS);
   for (const e of EWW) addEW(e, NSW);
-  for (const s of NS) if (s.w >= 20) for (let z = s.z0 + 4; z < s.z1 - 4; z += 4) { if (EW.some(e => Math.abs(e.z - z) < e.w / 2 + 3 && s.x > e.x0 && s.x < e.x1) || skip(s.x, z)) continue; dashes.push([s.x - 0.25, z, 0.14, 4, '#e8b923'], [s.x + 0.25, z, 0.14, 4, '#e8b923']); }
-  for (let t = 20; t < PL; t += 26) { const px = PS.x + PD.x * t, pz = PS.z + PD.z * t; if (Math.hypot(px - LC.x, pz - LC.z) > 75) for (const s of [-1, 1]) LAMPS.push([px + VA.x * s * 27, pz + VA.z * s * 27]); }
-  const all = dashes.concat(walks);
-  const paint = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2 }), all.length);
-  all.forEach(([x, z, w, d, c], i) => { dummy.position.set(x, 0.035, z); dummy.rotation.set(0, 0, 0); dummy.scale.set(w, 1, d); dummy.updateMatrix(); paint.setMatrixAt(i, dummy.matrix); paint.setColorAt(i, tmpC.set(c)); });
+  for (const s of NS) {
+    if (s.w >= 20) for (let z = s.z0 + 4; z < s.z1 - 4; z += 4) {
+      if (EW.some(e => Math.abs(e.z - z) < e.w / 2 + 3 && s.x > e.x0 && s.x < e.x1) || skip(s.x, z)) continue;
+      const y = paintY(s.x, z);
+      dashes.push([s.x - s.w / 8, z, 0.12, 4, '#e8b923', y], [s.x + s.w / 8, z, 0.12, 4, '#e8b923', y]);
+    }
+    for (let z = s.z0 + 18; z < s.z1 - 18; z += 40) if (!skip(s.x, z)) covers.push([s.x, z, 0.72, '#38393e', paintY(s.x, z)]);
+  }
+  for (let t = 20; t < PL; t += 26) {
+    const px = PS.x + PD.x * t, pz = PS.z + PD.z * t;
+    if (Math.hypot(px - LC.x, pz - LC.z) > 75) for (const s of [-1, 1]) LAMPS.push([px + VA.x * s * 27, pz + VA.z * s * 27]);
+  }
+  forEachBlock((x0, x1, z0, z1, xc, cSt, dSt) => {
+    if (skip(xc, (z0 + z1) / 2)) return;
+    const b = blockAt(xc, (z0 + z1) / 2);
+    if (!b || b.k !== 'walk') return;
+    const walkCol = '#ddd8cf', curbCol = '#8a8780';
+    const mkWalk = (x, z, w, d) => walks.push([x, z, w, d, walkCol, GRD.sw - 0.018]);
+    const mkCurb = (x, z, w, d, ry) => curbs.push([x, z, w, d, curbCol, GRD.sw - GRD.curbH / 2, ry]);
+    mkWalk((x0 + x1) / 2, z0 + sw / 2, x1 - x0, sw); mkCurb((x0 + x1) / 2, z0 + 0.11, x1 - x0, 0.22, 0);
+    mkWalk((x0 + x1) / 2, z1 - sw / 2, x1 - x0, sw); mkCurb((x0 + x1) / 2, z1 - 0.11, x1 - x0, 0.22, 0);
+    mkWalk(x0 + sw / 2, (z0 + z1) / 2, sw, z1 - z0 - sw * 2); mkCurb(x0 + 0.11, (z0 + z1) / 2, 0.22, z1 - z0 - sw * 2, 0);
+    mkWalk(x1 - sw / 2, (z0 + z1) / 2, sw, z1 - z0 - sw * 2); mkCurb(x1 - 0.11, (z0 + z1) / 2, 0.22, z1 - z0 - sw * 2, 0);
+    for (const side of [-1, 1]) {
+      const gx = (x0 + x1) / 2, gz = side < 0 ? z0 + 0.35 : z1 - 0.35;
+      gutters.push([gx, gz, x1 - x0 - 1.2, 0.35, '#1e1f23', GRD.street + 0.004]);
+    }
+  });
+  const paint = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2 }), dashes.length + cross.length);
+  dashes.forEach(([x, z, w, d, c, y], i) => {
+    dummy.position.set(x, y ?? paintY(x, z), z); dummy.rotation.set(0, 0, 0);
+    dummy.scale.set(w, 1, d); dummy.updateMatrix(); paint.setMatrixAt(i, dummy.matrix); paint.setColorAt(i, tmpC.set(c));
+  });
+  cross.forEach(([x, z, w, d, c, y, rot], i) => {
+    dummy.position.set(x, y, z); dummy.rotation.set(0, rot || 0, 0);
+    dummy.scale.set(w, 1, d); dummy.updateMatrix(); paint.setMatrixAt(i + dashes.length, dummy.matrix); paint.setColorAt(i + dashes.length, tmpC.set(c));
+  });
   paint.receiveShadow = true; paint.frustumCulled = false; scene.add(paint);
+
+  const walkIM = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -1 }), walks.length);
+  walks.forEach(([x, z, w, d, c, y], i) => {
+    dummy.position.set(x, y, z); dummy.rotation.set(0, 0, 0); dummy.scale.set(w, 1, d); dummy.updateMatrix();
+    walkIM.setMatrixAt(i, dummy.matrix); walkIM.setColorAt(i, tmpC.set(c));
+  });
+  walkIM.receiveShadow = true; walkIM.frustumCulled = false; scene.add(walkIM);
+
+  const curbIM = new THREE.InstancedMesh(BOX, mat('#8a8780', { roughness: 0.88 }), curbs.length);
+  curbs.forEach(([x, z, w, d, c, y, ry], i) => {
+    dummy.position.set(x, y, z); dummy.rotation.set(0, ry || 0, 0); dummy.scale.set(w, GRD.curbH, d); dummy.updateMatrix();
+    curbIM.setMatrixAt(i, dummy.matrix); curbIM.setColorAt(i, tmpC.set(c));
+  });
+  curbIM.receiveShadow = true; curbIM.frustumCulled = false; scene.add(curbIM);
+
+  const coverIM = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 0.05, 10).rotateX(Math.PI / 2), mat('#3a3b40', { roughness: 0.82, metalness: 0.35 }), covers.length);
+  covers.forEach(([x, z, r, c, y], i) => {
+    dummy.position.set(x, y, z); dummy.rotation.set(0, rnd() * Math.PI, 0); dummy.scale.set(r, r, 1); dummy.updateMatrix();
+    coverIM.setMatrixAt(i, dummy.matrix); coverIM.setColorAt(i, tmpC.set(c));
+  });
+  coverIM.receiveShadow = true; coverIM.frustumCulled = false; scene.add(coverIM);
+
+  const gutterIM = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#1e1f23', roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -3 }), gutters.length);
+  gutters.forEach(([x, z, w, d, c, y], i) => {
+    dummy.position.set(x, y, z); dummy.rotation.set(0, 0, 0); dummy.scale.set(w, 1, d); dummy.updateMatrix();
+    gutterIM.setMatrixAt(i, dummy.matrix);
+  });
+  gutterIM.receiveShadow = true; gutterIM.frustumCulled = false; scene.add(gutterIM);
 
   const poles = new THREE.InstancedMesh(CYL6, mat('#2c3035', { metalness: 0.5, roughness: 0.5 }), LAMPS.length);
   lampHeadMat = glowMat('#ddd6c4', '#ffcf8a', 3.2);
@@ -2406,10 +2564,11 @@ function buildStreetDetail() {
   poolMat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(pc), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: true });
   const pools = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), poolMat, LAMPS.length);
   LAMPS.forEach(([x, z], i) => {
+    const sy = onSidewalk(x, z) ? GRD.sw : streetSurfaceY(x, z);
     dummy.rotation.set(0, 0, 0);
-    dummy.position.set(x, 0, z); dummy.scale.set(0.16, 7, 0.16); dummy.updateMatrix(); poles.setMatrixAt(i, dummy.matrix);
-    dummy.position.set(x, 7.1, z); dummy.scale.set(0.55, 0.3, 0.55); dummy.updateMatrix(); heads.setMatrixAt(i, dummy.matrix);
-    dummy.position.set(x, 0.22, z); dummy.scale.set(19, 1, 19); dummy.updateMatrix(); pools.setMatrixAt(i, dummy.matrix);
+    dummy.position.set(x, sy, z); dummy.scale.set(0.16, 7, 0.16); dummy.updateMatrix(); poles.setMatrixAt(i, dummy.matrix);
+    dummy.position.set(x, sy + 7.1, z); dummy.scale.set(0.55, 0.3, 0.55); dummy.updateMatrix(); heads.setMatrixAt(i, dummy.matrix);
+    dummy.position.set(x, sy + 0.22, z); dummy.scale.set(19, 1, 19); dummy.updateMatrix(); pools.setMatrixAt(i, dummy.matrix);
   });
   poles.castShadow = true; poles.frustumCulled = heads.frustumCulled = pools.frustumCulled = false; pools.renderOrder = 2;
   scene.add(poles, heads, pools);
@@ -2519,7 +2678,8 @@ function buildTraffic() {
   const pedStreets = EW.filter(e => e.z > -320 && e.z < 720 && e.name !== 'Market St');
   for (let i = 0; i < 240; i++) {
     const e = pick(pedStreets), side = rnd() < 0.5 ? -1 : 1;
-    PEDS.push({ x: rr(-900, 1650), z: e.z + side * (e.w / 2 + 1.6 + rr(-0.4, 0.4)), dir: rnd() < 0.5 ? -1 : 1, v: rr(1.1, 1.7), p: rnd() * 6 });
+    const z = e.z + side * (e.w / 2 + GRD.swW * 0.55 + rr(-0.3, 0.3)), x = rr(-900, 1650);
+    PEDS.push({ x, z, dir: rnd() < 0.5 ? -1 : 1, v: rr(1.1, 1.7), p: rnd() * 6 });
   }
   traffic.peds = new THREE.InstancedMesh(new THREE.CapsuleGeometry(0.24, 1.1, 2, 6).translate(0, 0.8, 0), new THREE.MeshStandardMaterial({ roughness: 0.8 }), PEDS.length);
   PEDS.forEach((p, i) => traffic.peds.setColorAt(i, tmpC.set(pick(pedCols))));
@@ -2559,7 +2719,8 @@ function updateTraffic(dt, t) {
     c.x = x + c.kx; c.z = z + c.kz; c.ryaw = c.yaw + c.ky;
     c.spin -= c.v * dt / 0.35;
     const g = traffic.groups[c.mi]; if (!g) continue;
-    carP.set(c.x, 0, c.z); carQ.setFromAxisAngle(YAX, c.ryaw); carM.compose(carP, carQ, carS);
+    const sy = streetSurfaceY(c.x, c.z);
+    carP.set(c.x, sy, c.z); carQ.setFromAxisAngle(YAX, c.ryaw); carM.compose(carP, carQ, carS);
     for (const k in g.ims) g.ims[k].setMatrixAt(c.slot, carM);
     const wo = wheelOffsets(g.m), base = c.wi;
     for (let k = 0; k < 4; k++) { whL.makeRotationX(c.spin); whL.setPosition(wo[k][0], 0.35, wo[k][1]); whM.multiplyMatrices(carM, whL); traffic.wheels.setMatrixAt(base + k, whM); }
@@ -2568,7 +2729,8 @@ function updateTraffic(dt, t) {
   traffic.wheels.instanceMatrix.needsUpdate = true;
   for (let i = 0; i < PEDS.length; i++) {
     const p = PEDS[i]; p.x += p.dir * p.v * dt; if (p.x > 1650) p.x = -900; if (p.x < -900) p.x = 1650;
-    carP.set(p.x, Math.abs(Math.sin(t * 5 + p.p)) * 0.06, p.z); carQ.setFromAxisAngle(YAX, p.dir > 0 ? -Math.PI / 2 : Math.PI / 2); carM.compose(carP, carQ, carS);
+    const py = gradeSurfaceY(p.x, p.z);
+    carP.set(p.x, py + Math.abs(Math.sin(t * 5 + p.p)) * 0.06, p.z); carQ.setFromAxisAngle(YAX, p.dir > 0 ? -Math.PI / 2 : Math.PI / 2); carM.compose(carP, carQ, carS);
     traffic.peds.setMatrixAt(i, carM);
   }
   traffic.peds.instanceMatrix.needsUpdate = true;
@@ -2658,7 +2820,7 @@ function updateRace(dt) {
     r.steer += (clamp(dy * 8, -1, 1) - r.steer) * Math.min(1, dt * 6); r.yaw = nyaw;
     integrateKnock(r, dt);
     r.x = x + r.kx; r.z = z + r.kz; r.ryaw = r.yaw + r.ky;
-    r.g.position.set(r.x, 0, r.z); r.g.rotation.y = r.ryaw; r.g.rotation.z = r.steer * 0.05 * Math.min(1, r.v / 20);
+    r.g.position.set(r.x, streetSurfaceY(r.x, r.z), r.z); r.g.rotation.y = r.ryaw; r.g.rotation.z = r.steer * 0.05 * Math.min(1, r.v / 20);
     for (const w of r.g.wheels) { w.w.rotation.x -= r.v * dt / 0.35; if (w.front) w.pv.rotation.y = r.steer * 0.35; }
   }
 }
@@ -3146,6 +3308,9 @@ function bakeMap() {
   g.fillStyle = '#1d3b58'; g.fillRect(X(SCH.x0), 0, S(SCH.x1 - SCH.x0), c.height); g.fillRect(X(DEL.x0), 0, S(DEL.x1 - DEL.x0), c.height);
   g.fillStyle = '#7d7590'; for (const b of SBRIDGES) g.fillRect(X(SCH.x0 - 6), Z(b.z - b.w / 2), S(SCH.x1 - SCH.x0 + 12), S(b.w));
   g.fillRect(X(1150), Z(BZ - 12), S(2000), S(24));
+  g.fillStyle = '#232328';
+  for (const e of EW.concat(EWW)) if (!streetSkip(e.x0 + 20, e.z, 40)) g.fillRect(X(e.x0), Z(e.z - e.w / 2), S(e.x1 - e.x0), S(e.w));
+  for (const s of NS.concat(NSW)) if (!streetSkip(s.x, (s.z0 + s.z1) / 2, 40)) g.fillRect(X(s.x - s.w / 2), Z(s.z0), S(s.w), S(s.z1 - s.z0));
   const sc = { walk: '#2a2535', park: '#2c5236', river: '#2c5236', lawn: '#335a3a', plaza: '#3a3446' };
   for (const s of SLABS) { g.fillStyle = sc[s.k]; g.fillRect(X(s.x0), Z(s.z0), S(s.x1 - s.x0), S(s.z1 - s.z0)); }
   g.fillStyle = '#3c3550'; for (const b of B) g.fillRect(X(b.x - b.w / 2), Z(b.z - b.d / 2), S(b.w), S(b.d));
