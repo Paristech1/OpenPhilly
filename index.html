@@ -269,7 +269,7 @@ function lineGlow(day, night) {
   LGLOW.push({ m, day: new THREE.Color(day), night: new THREE.Color(night) }); return m;
 }
 
-const SURF = { wet: { value: 0 } };
+const SURF = { wet: { value: 0 }, sunDir: { value: new V3(0, 1, 0) } };
 const surfNoiseGLSL = `float surfHash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
 float surfNoise(vec2 p){ vec2 i=floor(p); vec2 f=fract(p); f=f*f*(3.0-2.0*f);
 return mix(mix(surfHash(i), surfHash(i+vec2(1.0,0.0)), f.x), mix(surfHash(i+vec2(0.0,1.0)), surfHash(i+vec2(1.0,1.0)), f.x), f.y); }`;
@@ -277,9 +277,10 @@ function asphaltSurfMat() {
   const m = new THREE.MeshStandardMaterial({ color: '#232428', roughness: 0.9, metalness: 0.05 });
   m.onBeforeCompile = sh => {
     sh.uniforms.uWet = SURF.wet;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>\nuniform float uWet;\nvarying vec3 vSurfWP;`)
+    sh.uniforms.uSunDir = SURF.sunDir;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>\nuniform float uWet;\nuniform vec3 uSunDir;\nvarying vec3 vSurfWP;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>\nvSurfWP = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nuniform float uWet;\nvarying vec3 vSurfWP;\n${surfNoiseGLSL}`)
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nuniform float uWet;\nuniform vec3 uSunDir;\nvarying vec3 vSurfWP;\n${surfNoiseGLSL}`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
 float ag = surfNoise(vSurfWP.xz * 0.22) * 0.55 + surfNoise(vSurfWP.xz * 1.35) * 0.35;
 roughnessFactor = mix(roughnessFactor, roughnessFactor * (0.68 + ag * 0.55), 0.92);
@@ -287,7 +288,14 @@ metalnessFactor = mix(metalnessFactor, 0.08 + ag * 0.12, uWet * 0.85);`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 float ag2 = surfNoise(vSurfWP.xz * 0.55);
 diffuseColor.rgb *= 0.86 + ag2 * 0.18;
-diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.75, 0.78, 0.82), uWet * 0.35);`);
+diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.75, 0.78, 0.82), uWet * 0.35);
+vec3 vw = normalize(vViewPosition);
+vec3 nrm = normalize(normal);
+vec3 refl = reflect(vw, nrm);
+float sunSpec = pow(max(dot(refl, normalize(uSunDir)), 0.0), 48.0);
+float wetSheen = surfNoise(vSurfWP.xz * 0.08 + refl.xz * 6.0) * 0.5 + 0.5;
+float streak = sunSpec * wetSheen * uWet * (0.35 + ag2 * 0.25);
+diffuseColor.rgb += vec3(0.22, 0.24, 0.28) * streak;`);
   };
   ROAD_MATS.push(m); return m;
 }
@@ -347,6 +355,11 @@ wmask = mix(wAvg, wmask, wAA);
 wmask *= (1.0 - vRoof) * step(0.55, vWin.y);
 float wSd = floor(fract(vSeed) * 997.0 + 0.5);
 float wr = wHash(wc + vec2(wSd * 1.37, wSd * 0.71));
+float sill = smoothstep(0.0, 0.07, wf.y) * (1.0 - smoothstep(0.11, 0.17, wf.y));
+float spandrel = smoothstep(0.8, 0.88, wf.y) * (1.0 - wmask);
+float ledge = smoothstep(0.94, 0.99, wf.y);
+diffuseColor.rgb *= 1.0 - sill * 0.14 - spandrel * 0.2 - ledge * 0.1;
+diffuseColor.rgb *= 1.0 - (1.0 - wmask) * 0.06;
 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.05, 0.065, 0.09) + diffuseColor.rgb * 0.12 + vec3(0.05) * wr, wmask * 0.86);
 diffuseColor.rgb *= mix(1.0, 0.6, vRoof);`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
@@ -2517,6 +2530,50 @@ function buildStreetSurfaces() {
   mesh.receiveShadow = true; mesh.frustumCulled = false; scene.add(mesh);
 }
 
+function mergeCurbRun(pos, ind, ax, az, bx, bz, inx, inz, segs) {
+  const base = pos.length / 3;
+  const inset = 0.2, bevel = 0.055;
+  for (let i = 0; i <= segs; i++) {
+    const t = i / segs;
+    const x = ax + (bx - ax) * t, z = az + (bz - az) * t;
+    const yOut = streetSurfaceY(x - inx * 0.15, z - inz * 0.15) + 0.004;
+    const yTop = GRD.sw - 0.015;
+    pos.push(x, yOut, z);
+    pos.push(x + inx * inset * 0.55, yOut + bevel, z + inz * inset * 0.55);
+    pos.push(x + inx * inset, yTop, z + inz * inset);
+  }
+  for (let i = 0; i < segs; i++) {
+    const a = base + i * 3;
+    for (let k = 0; k < 2; k++) {
+      const o = a + k, p = a + k + 3, q = a + k + 1, r = a + k + 4;
+      ind.push(o, p, q, q, p, r);
+    }
+  }
+}
+
+function buildBeveledCurbs() {
+  const pos = [], ind = [];
+  forEachBlock((x0, x1, z0, z1, xc) => {
+    if (streetSkip(xc, (z0 + z1) / 2, 8)) return;
+    const b = blockAt(xc, (z0 + z1) / 2);
+    if (!b || b.k !== 'walk') return;
+    const sw = GRD.swW;
+    const segX = Math.max(3, Math.round((x1 - x0) / 5));
+    const segZ = Math.max(3, Math.round((z1 - z0) / 5));
+    mergeCurbRun(pos, ind, x0, z0 + 0.12, x1, z0 + 0.12, 0, 1, segX);
+    mergeCurbRun(pos, ind, x0, z1 - 0.12, x1, z1 - 0.12, 0, -1, segX);
+    mergeCurbRun(pos, ind, x0 + 0.12, z0 + sw, x0 + 0.12, z1 - sw, 1, 0, segZ);
+    mergeCurbRun(pos, ind, x1 - 0.12, z0 + sw, x1 - 0.12, z1 - sw, -1, 0, segZ);
+  });
+  if (!pos.length) return;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(ind);
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, mat('#8a8780', { roughness: 0.86 }));
+  mesh.castShadow = mesh.receiveShadow = true; mesh.frustumCulled = false; scene.add(mesh);
+}
+
 function buildSidewalkSurfaces() {
   const pos = [], uv = [], ind = [];
   const ySw = () => GRD.sw + 0.012;
@@ -2593,7 +2650,7 @@ function buildTrees() {
 const LAMPS = [];
 let poolMat, lampHeadMat;
 function buildStreetDetail() {
-  const dashes = [], walks = [], curbs = [], cross = [], covers = [], gutters = [], parking = [], ramps = [], joints = [];
+  const dashes = [], walks = [], cross = [], covers = [], gutters = [], parking = [], ramps = [], joints = [];
   const skip = (x, z) => streetSkip(x, z, 0);
   const paintY = (x, z) => streetSurfaceY(x, z) + 0.012;
   const sw = GRD.swW;
@@ -2647,13 +2704,12 @@ function buildStreetDetail() {
     if (skip(xc, (z0 + z1) / 2)) return;
     const b = blockAt(xc, (z0 + z1) / 2);
     if (!b || b.k !== 'walk') return;
-    const walkCol = '#ddd8cf', curbCol = '#8a8780';
+    const walkCol = '#ddd8cf';
     const mkWalk = (x, z, w, d) => walks.push([x, z, w, d, walkCol, GRD.sw - 0.018]);
-    const mkCurb = (x, z, w, d, ry) => curbs.push([x, z, w, d, curbCol, GRD.sw - GRD.curbH / 2, ry]);
-    mkWalk((x0 + x1) / 2, z0 + sw / 2, x1 - x0, sw); mkCurb((x0 + x1) / 2, z0 + 0.11, x1 - x0, 0.22, 0);
-    mkWalk((x0 + x1) / 2, z1 - sw / 2, x1 - x0, sw); mkCurb((x0 + x1) / 2, z1 - 0.11, x1 - x0, 0.22, 0);
-    mkWalk(x0 + sw / 2, (z0 + z1) / 2, sw, z1 - z0 - sw * 2); mkCurb(x0 + 0.11, (z0 + z1) / 2, 0.22, z1 - z0 - sw * 2, 0);
-    mkWalk(x1 - sw / 2, (z0 + z1) / 2, sw, z1 - z0 - sw * 2); mkCurb(x1 - 0.11, (z0 + z1) / 2, 0.22, z1 - z0 - sw * 2, 0);
+    mkWalk((x0 + x1) / 2, z0 + sw / 2, x1 - x0, sw);
+    mkWalk((x0 + x1) / 2, z1 - sw / 2, x1 - x0, sw);
+    mkWalk(x0 + sw / 2, (z0 + z1) / 2, sw, z1 - z0 - sw * 2);
+    mkWalk(x1 - sw / 2, (z0 + z1) / 2, sw, z1 - z0 - sw * 2);
     for (const side of [-1, 1]) {
       const gx = (x0 + x1) / 2, gz = side < 0 ? z0 + 0.14 : z1 - 0.14;
       gutters.push([gx, gz, x1 - x0 - sw * 2, 0.28, '#1e1f23', GRD.street + 0.003]);
@@ -2687,13 +2743,6 @@ function buildStreetDetail() {
     walkIM.setMatrixAt(i, dummy.matrix); walkIM.setColorAt(i, tmpC.set(c));
   });
   walkIM.receiveShadow = true; walkIM.frustumCulled = false; scene.add(walkIM);
-
-  const curbIM = new THREE.InstancedMesh(BOX, mat('#8a8780', { roughness: 0.88 }), curbs.length);
-  curbs.forEach(([x, z, w, d, c, y, ry], i) => {
-    dummy.position.set(x, y, z); dummy.rotation.set(0, ry || 0, 0); dummy.scale.set(w, GRD.curbH, d); dummy.updateMatrix();
-    curbIM.setMatrixAt(i, dummy.matrix); curbIM.setColorAt(i, tmpC.set(c));
-  });
-  curbIM.receiveShadow = true; curbIM.frustumCulled = false; scene.add(curbIM);
 
   const coverIM = new THREE.InstancedMesh(new THREE.CylinderGeometry(1, 1, 0.05, 10).rotateX(Math.PI / 2), mat('#3a3b40', { roughness: 0.82, metalness: 0.35 }), covers.length);
   covers.forEach(([x, z, r, c, y], i) => {
@@ -3359,6 +3408,7 @@ function setTime(id, quiet) {
   if (poolMat) poolMat.opacity = Math.min(1, T.lamps * 0.6);
   for (const m of ROAD_MATS) { m.roughness = 0.92 - T.wet * 0.55; m.metalness = T.wet * 0.25; }
   SURF.wet.value = T.wet;
+  SURF.sunDir.value.copy(sunDir);
   renderer.toneMappingExposure = T.exp;
   if (bloomPass) bloomPass.strength = T.bloom;
   if (envRT) envRT.dispose(); envRT = pmrem.fromScene(envScene, 0.04, 0.1, 1000); scene.environment = envRT.texture;
@@ -3621,7 +3671,7 @@ async function boot() {
   buildLandmarks();
   buildSlabs(); buildBuildings();
   status('Planting autumn trees and street lamps…'); await nextFrame();
-  buildTrees(); buildStreetDetail();
+  buildTrees(); buildStreetDetail(); buildBeveledCurbs();
   status('Starting traffic…'); await nextFrame();
   buildTraffic(); buildRigs(); buildRace();
   try {
