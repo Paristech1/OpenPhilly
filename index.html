@@ -82,6 +82,7 @@ kbd{font-family:var(--mono);font-size:10px;color:var(--dim);border:1px solid var
 #race{left:50%;transform:translateX(-50%);top:calc(72px + env(safe-area-inset-top,0px));padding:8px 14px;border-radius:12px;font:500 12px/1.5 var(--mono);color:var(--dim);max-width:calc(100vw - 24px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #race b{color:var(--acid);font:700 13px var(--display);letter-spacing:.06em;margin-right:8px}
 #race em{font-style:normal;color:var(--ink)}
+#realAttr{position:fixed;left:50%;bottom:calc(6px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:25;font:500 10px var(--body);color:#fff;text-shadow:0 1px 2px #000;max-width:80vw;text-align:center;pointer-events:none;opacity:.85}
 #toast{position:fixed;left:50%;top:calc(118px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:30;padding:9px 14px;border-radius:12px;font:500 13px var(--body);pointer-events:none;transition:opacity .3s;white-space:nowrap}
 
 /* loader */
@@ -132,6 +133,8 @@ kbd{font-family:var(--mono);font-size:10px;color:var(--dim);border:1px solid var
   <div class="list" id="carList"></div>
   <h2>Teleport</h2>
   <div class="list" id="tpList"></div>
+  <h2>Real Philadelphia</h2>
+  <div class="list" id="realOpts"></div>
   <h2>Graphics</h2>
   <div class="grid2" id="gfxOpts"></div>
   <h2>Controls</h2>
@@ -155,7 +158,9 @@ kbd{font-family:var(--mono);font-size:10px;color:var(--dim);border:1px solid var
 
 <div id="race" class="hud glass" hidden aria-live="off"></div>
 <div id="toast" class="glass" style="opacity:0"></div>
+<div id="realAttr" class="hud" hidden><b>Google</b> <span id="realAttrTxt"></span></div>
 
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/+esm","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"}}</script>
 <script>
 window.addEventListener('error', function (e) {
   var s = document.getElementById('loadStatus');
@@ -423,6 +428,46 @@ float wAvg = wType < 0.5 ? 0.22 : (wType < 1.5 ? 0.68 : 0.33);
 wmask = mix(wAvg, wmask, wAA);
 wmask *= (1.0 - vRoof) * step(0.55, vWin.y);
 float wSd = floor(fract(vSeed) * 997.0 + 0.5);
+float wfhF = vSeed < 1.0 ? 3.4 : 3.9;
+vec2 wm = vec2(vWin.x * 3.1, vWin.y * wfhF);
+// storefronts: ground-floor shop glass on ~60% of brick/office buildings
+float sfOn = step(0.4, fract(vSeed * 3.17)) * step(wType, 1.5) * (1.0 - vRoof);
+float sfx = fract(vWin.x);
+float sfm = sfOn * step(0.1, sfx) * step(sfx, 0.9) * step(0.45, wm.y) * step(wm.y, 2.95);
+wmask = max(wmask, sfm * wAA + sfm * (1.0 - wAA) * 0.5);
+float fWall = (1.0 - wmask) * (1.0 - vRoof);
+float fH = 0.0;
+if (wType < 0.5 || wType > 1.5) {
+  // running-bond brick with mortar joints
+  vec2 bq = vec2(wm.x / 0.24, wm.y / 0.081);
+  bq.x += 0.5 * mod(floor(bq.y), 2.0);
+  vec2 bf = fract(bq); vec2 bi = floor(bq); vec2 bw = fwidth(bq);
+  float bAA = clamp(1.0 - max(bw.x, bw.y) * 1.4, 0.0, 1.0);
+  float bm = smoothstep(0.05, 0.05 + bw.x + 0.02, bf.x) * smoothstep(0.13, 0.13 + bw.y + 0.03, bf.y);
+  float bh = wHash(bi + vec2(wSd * 0.37, wSd * 1.91));
+  diffuseColor.rgb *= mix(1.0, 0.84 + 0.3 * bh, fWall * bAA);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.6, 0.57, 0.53) * (0.75 + 0.25 * bh), (1.0 - bm) * fWall * bAA * 0.6);
+  fH = bm * bAA * fWall * 0.012;
+} else {
+  // office: stone / metal panel joints and curtain-wall mullions
+  vec2 pq = vec2(wm.x / 1.55, wm.y / (wfhF * 0.5));
+  vec2 pf = fract(pq); vec2 pw = fwidth(pq);
+  float pAA = clamp(1.0 - max(pw.x, pw.y) * 2.0, 0.0, 1.0);
+  float pm = smoothstep(0.015, 0.015 + pw.x + 0.01, pf.x) * smoothstep(0.03, 0.03 + pw.y + 0.01, pf.y);
+  float ph = wHash(floor(pq) + vec2(wSd * 0.53, wSd * 1.13));
+  diffuseColor.rgb *= mix(1.0, 0.93 + 0.12 * ph, fWall * pAA);
+  diffuseColor.rgb *= 1.0 - (1.0 - pm) * fWall * pAA * 0.35;
+  float mul = 1.0 - smoothstep(0.02, 0.05, abs(fract(vWin.x * 2.0) - 0.5) - 0.44);
+  wmask *= 1.0 - mul * pAA * 0.85;
+  fH = pm * pAA * fWall * 0.02;
+}
+// weathering that survives distance: grime streaks under windows + blotchy panel-scale tone
+float colX = step(0.18, fract(vWin.x)) * step(fract(vWin.x), 0.82);
+float streak = colX * (1.0 - smoothstep(0.0, 0.24, fract(vWin.y))) * step(1.0, vWin.y) * fWall;
+float blot = wHash(floor(wm / vec2(4.6, 3.0)) + vec2(wSd * 0.11, wSd * 0.29));
+diffuseColor.rgb *= (1.0 - streak * 0.16) * mix(1.0, 0.92 + 0.12 * blot, fWall);
+// contact shadow where the facade meets the street
+diffuseColor.rgb *= 1.0 - (1.0 - vRoof) * 0.38 * exp(-wm.y / 1.3);
 float wr = wHash(wc + vec2(wSd * 1.37, wSd * 0.71));
 float sill = smoothstep(0.0, 0.07, wf.y) * (1.0 - smoothstep(0.11, 0.17, wf.y));
 float spandrel = smoothstep(0.8, 0.88, wf.y) * (1.0 - wmask);
@@ -440,6 +485,15 @@ diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.05, 0.065, 0.09) + diffuseColor.
 diffuseColor.rgb *= mix(1.0, 0.6, vRoof);`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
 roughnessFactor = mix(roughnessFactor, 0.12, wmask);`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+{
+  vec3 bpx = dFdx(-vViewPosition), bpy = dFdy(-vViewPosition);
+  float bhx = dFdx(fH), bhy = dFdy(fH);
+  vec3 bR1 = cross(bpy, normal), bR2 = cross(normal, bpx);
+  float bDet = dot(bpx, bR1);
+  vec3 bGrad = sign(bDet) * (bhx * bR1 + bhy * bR2);
+  normal = normalize(abs(bDet) * normal - bGrad);
+}`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
 metalnessFactor = mix(metalnessFactor, 0.55, wmask);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
@@ -3438,9 +3492,9 @@ function updatePlayer(dt) {
     if (g < y - 0.05) { P.vy -= 25 * dt; P.pos.y = Math.max(g, y + P.vy * dt); if (P.pos.y <= g) P.vy = 0; }
     else { P.pos.y = g; P.vy = 0; }
   } else {
-    for (const c of queryCols(p.x, p.z, sp.r + 2)) { if (P.pos.y > c.top + 0.5 || P.pos.y + 2 < c.bottom) continue; pushOut(c, p, sp.r); }
+    if (!REAL.on) for (const c of queryCols(p.x, p.z, sp.r + 2)) { if (P.pos.y > c.top + 0.5 || P.pos.y + 2 < c.bottom) continue; pushOut(c, p, sp.r); }
     P.pos.x = clamp(p.x, -5000, 6000); P.pos.z = clamp(p.z, -4000, 4000);
-    const floor = Math.max(topAt(P.pos.x, P.pos.z), roofAt(P.pos.x, P.pos.z), isWater(P.pos.x, P.pos.z) ? -0.6 : 0);
+    const floor = REAL.on ? REAL.floor : Math.max(topAt(P.pos.x, P.pos.z), roofAt(P.pos.x, P.pos.z), isWater(P.pos.x, P.pos.z) ? -0.6 : 0);
     P.pos.y += P.vy * dt;
     if (P.pos.y < floor) { P.pos.y = floor; P.vy = Math.max(0, P.vy); P.speed *= Math.exp(-dt * 3); }
     P.pos.y = Math.min(P.pos.y, 900);
@@ -3470,6 +3524,7 @@ function updateRig(dt) {
 function setMode(m, quiet) {
   if (m === P.mode && !quiet) return;
   const was = P.mode; P.mode = m;
+  if (m !== 'fly' && REAL.on) disableReal(true);
   if (m === 'fly') { P.pos.y = Math.max(P.pos.y, topAt(P.pos.x, P.pos.z)) + (was === 'fly' ? 0 : 35); P.vy = 0; P.speed = Math.min(Math.abs(P.speed), 20); }
   else {
     if (was === 'fly' || quiet) {
@@ -3585,7 +3640,34 @@ const TIMES = {
   night: { label: 'Night', el: 38, az: 140, sun: '#9fb2e0', sunI: 0.32, hTop: '#2c3566', hBot: '#0b0b12', hI: 0.45, top: '#04060f', hor: '#1d2142', bot: '#07080c', fog: '#15182c', fogD: 0.00045, env: 0.18, night: 0.85, lit: 0.38, lamps: 1.1, stars: 0.6, bloom: 0.5, exp: 1.0, sunVis: 0.12, shadow: false, wet: 0.82 }
 };
 const TIME_ORDER = ['golden', 'midday', 'blue', 'night'];
-let timeId = 'golden', bloomPass, composer, lampLevel = 0;
+let timeId = 'golden', bloomPass, composer, lampLevel = 0, aoPass = null, gradePass = null;
+// filmic color grade in display space: contrast, saturation, split-tone, vignette, grain
+const GRADE_SHADER = {
+  uniforms: { tDiffuse: { value: null }, uContrast: { value: 1.06 }, uSat: { value: 1.06 }, uShadow: { value: new THREE.Vector3() }, uHigh: { value: new THREE.Vector3() }, uVig: { value: 0.3 }, uGrain: { value: 0.02 }, uTime: { value: 0 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float uContrast, uSat, uVig, uGrain, uTime; uniform vec3 uShadow, uHigh; varying vec2 vUv;
+void main(){
+  vec4 c = texture2D(tDiffuse, vUv); vec3 col = c.rgb;
+  float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  col = mix(vec3(l), col, uSat);
+  col = (col - 0.5) * uContrast + 0.5;
+  col += uShadow * (1.0 - l) * (1.0 - l) + uHigh * l * l;
+  vec2 d = vUv - 0.5; col *= 1.0 - uVig * dot(d, d) * 2.2;
+  float n = fract(sin(dot(vUv * vec2(12.9898, 78.233) + uTime, vec2(1.0, 57.0))) * 43758.5453);
+  col += (n - 0.5) * uGrain;
+  gl_FragColor = vec4(clamp(col, 0.0, 1.0), c.a);
+}`
+};
+const GRADES = {
+  golden: { c: 1.08, s: 1.1, sh: [0.0, 0.012, 0.035], hi: [0.035, 0.012, -0.02], v: 0.38 },
+  midday: { c: 1.06, s: 1.06, sh: [0.0, 0.006, 0.02], hi: [0.01, 0.008, 0.0], v: 0.26 },
+  blue: { c: 1.05, s: 1.04, sh: [0.008, 0.016, 0.055], hi: [0.0, 0.004, 0.02], v: 0.32 },
+  night: { c: 1.04, s: 1.1, sh: [0.012, 0.02, 0.055], hi: [0.03, 0.012, -0.01], v: 0.3 }
+};
+function applyGrade(id) {
+  if (!gradePass) return; const g = GRADES[id] || GRADES.golden, u = gradePass.uniforms;
+  u.uContrast.value = g.c; u.uSat.value = g.s; u.uShadow.value.set(...g.sh); u.uHigh.value.set(...g.hi); u.uVig.value = g.v;
+}
 function setTime(id, quiet) {
   timeId = id; const T = TIMES[id];
   const el = T.el * Math.PI / 180, az = T.az * Math.PI / 180;
@@ -3611,6 +3693,7 @@ function setTime(id, quiet) {
   SURF.lamps.value = T.lamps;
   if (id === 'golden' && quality.shadows) sun.shadow.normalBias = 0.48;
   renderer.toneMappingExposure = T.exp;
+  applyGrade(id); if (REAL.on) { tintReal(); REAL.fogD = scene.fog.density; scene.fog.density *= 0.45; }
   if (bloomPass) {
     bloomPass.strength = T.bloom;
     bloomPass.threshold = id === 'golden' ? 0.68 : id === 'night' || id === 'blue' ? 0.42 : 0.82;
@@ -3625,7 +3708,7 @@ function setTime(id, quiet) {
 // ---------------------------------------------------------------- quality
 const quality = { level: 'high', shadows: true, bloom: true };
 function setQuality(l, quiet) {
-  quality.level = l; quality.shadows = l === 'high'; quality.bloom = l !== 'low';
+  quality.level = l; quality.shadows = l === 'high'; quality.bloom = l !== 'low'; if (aoPass) aoPass.enabled = l === 'high';
   renderer.setPixelRatio(l === 'low' ? 1 : Math.min(devicePixelRatio, maxPR));
   renderer.setSize(innerWidth, innerHeight); if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(innerWidth, innerHeight); }
   const sm = l === 'high' ? 4096 : l === 'medium' ? 2048 : 1024;
@@ -3634,6 +3717,90 @@ function setQuality(l, quiet) {
   refreshPanel(); if (!quiet) toast('Graphics: ' + l);
 }
 
+
+// ---------------------------------------------------------------- Real Philly: Google Photorealistic 3D Tiles (Fly mode)
+// Real photogrammetry of Philadelphia streamed via 3d-tiles-renderer. Origin = City Hall; rotated so Market St runs along +x like the game grid.
+const TILES_LIB = 'https://cdn.jsdelivr.net/npm/3d-tiles-renderer@0.4.28/build/';
+const REAL = { on: false, tiles: null, root: null, key: '', loading: false, mats: new Set(), hidden: [], floor: 4, grounded: false, attrT: 0, err: 0 };
+const REAL_ORIGIN = { lat: 39.95233, lon: -75.16359, h: -20 };
+const REAL_ROT = Math.PI + 8.124 * Math.PI / 180; // ENU (x west, z north) -> game (x east along Market, z south)
+try { REAL.key = localStorage.getItem('gTilesKey') || ''; } catch (e) { /* storage blocked */ }
+function askKey() {
+  const k = prompt('Paste your Google Maps Platform API key (Map Tiles API enabled). It is saved only in this browser.', REAL.key || '');
+  if (k === null) return;
+  REAL.key = k.trim();
+  try { if (REAL.key) localStorage.setItem('gTilesKey', REAL.key); else localStorage.removeItem('gTilesKey'); } catch (e) { /* storage blocked */ }
+  if (REAL.tiles) { const wasOn = REAL.on; disableReal(true); scene.remove(REAL.root); REAL.tiles.dispose(); REAL.tiles = null; REAL.grounded = false; if (wasOn && REAL.key) enableReal(); }
+  refreshPanel(); if (REAL.key) toast('API key saved');
+}
+function tintReal() {
+  const T = timeId, c = T === 'night' ? [0.2, 0.22, 0.32] : T === 'blue' ? [0.45, 0.48, 0.66] : T === 'golden' ? [1.05, 0.88, 0.72] : [1, 1, 1];
+  for (const m of REAL.mats) if (m.color) m.color.setRGB(...c);
+}
+async function initReal() {
+  REAL.loading = true; toast('Loading real Philadelphia…');
+  const [{ TilesRenderer }, plug, { DRACOLoader }] = await Promise.all([
+    import(TILES_LIB + 'index.three.js'), import(TILES_LIB + 'index.plugins.js'), import('three/addons/loaders/DRACOLoader.js')]);
+  const tiles = new TilesRenderer();
+  tiles.registerPlugin(new plug.GoogleCloudAuthPlugin({ apiToken: REAL.key, autoRefreshToken: true }));
+  tiles.registerPlugin(new plug.GLTFExtensionsPlugin({ dracoLoader: new DRACOLoader().setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/') }));
+  tiles.registerPlugin(new plug.TilesFadePlugin());
+  tiles.registerPlugin(new plug.ReorientationPlugin({ lat: REAL_ORIGIN.lat * Math.PI / 180, lon: REAL_ORIGIN.lon * Math.PI / 180, height: REAL_ORIGIN.h, recenter: true }));
+  tiles.errorTarget = isTouch ? 28 : 14;
+  tiles.setCamera(camera); tiles.setResolutionFromRenderer(camera, renderer);
+  tiles.addEventListener('load-model', ({ scene: s }) => {
+    s.traverse(o => { if (o.material) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => { REAL.mats.add(m); m.fog = true; }); } });
+    tintReal();
+  });
+  tiles.addEventListener('dispose-model', ({ scene: s }) => { s.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => REAL.mats.delete(m)); }); });
+  tiles.addEventListener('load-error', e => {
+    console.warn('Google tiles error', e.error || e);
+    if (++REAL.err === 1) toast('Google 3D tiles failed: check the API key and that Map Tiles API is enabled');
+  });
+  const root = new THREE.Group(); root.rotation.y = REAL_ROT; root.add(tiles.group);
+  REAL.tiles = tiles; REAL.root = root; REAL.loading = false;
+}
+const realRay = new THREE.Raycaster(); realRay.firstHitOnly = true;
+function realGround() {
+  // once tiles stream in, snap the photogrammetry so street level at City Hall sits at y = 0, and keep a soft floor under the player
+  REAL.attrT -= 1 / 60;
+  if (REAL.attrT <= 0) {
+    REAL.attrT = 1;
+    const a = REAL.tiles.getAttributions().filter(x => x.type === 'string').map(x => x.value).join(' · ');
+    $('realAttrTxt').textContent = a;
+  }
+  if (!REAL.tiles.group.children.length) return;
+  if (!REAL.grounded) {
+    realRay.set(new V3(60, 800, 60), new V3(0, -1, 0));
+    const h = realRay.intersectObject(REAL.tiles.group, true)[0];
+    if (h) { REAL.root.position.y -= h.point.y; REAL.grounded = true; }
+  }
+  if ((REAL.floorT = (REAL.floorT || 0) - 1) <= 0) {
+    REAL.floorT = 10;
+    realRay.set(new V3(P.pos.x, P.pos.y + 300, P.pos.z), new V3(0, -1, 0));
+    const h = realRay.intersectObject(REAL.tiles.group, true)[0];
+    REAL.floor = h ? h.point.y + 2 : 4;
+  }
+}
+async function enableReal() {
+  if (!REAL.key) { askKey(); if (!REAL.key) return; }
+  if (REAL.loading) return;
+  try { if (!REAL.tiles) await initReal(); } catch (e) { REAL.loading = false; console.warn(e); toast('Could not load the 3D tiles library'); return; }
+  if (P.mode !== 'fly') setMode('fly', true);
+  if (P.pos.y < 120) { P.pos.y = 160; P.vy = 0; }
+  const keep = new Set([sky, sun, sun.target, hemi, camera, REAL.root, ...Object.values(rigs)]);
+  REAL.hidden = scene.children.filter(o => o.visible && !keep.has(o));
+  REAL.hidden.forEach(o => { o.visible = false; });
+  scene.add(REAL.root); REAL.on = true; REAL.err = 0; REAL.fogD = scene.fog.density; scene.fog.density = REAL.fogD * 0.45;
+  tintReal(); $('realAttr').hidden = false; refreshPanel(); toast('Real Philly 3D · Google');
+}
+function disableReal(quiet) {
+  if (!REAL.on) return;
+  REAL.hidden.forEach(o => { o.visible = true; }); REAL.hidden = [];
+  if (REAL.root) scene.remove(REAL.root);
+  REAL.on = false; if (REAL.fogD != null) scene.fog.density = REAL.fogD;
+  $('realAttr').hidden = true; refreshPanel(); if (!quiet) toast('Back to Slop Philadelphia');
+}
 // ---------------------------------------------------------------- places & HUD
 const TP = [
   { name: 'City Hall', sub: 'Broad & Market', x: 5, z: 120, yaw: 0 },
@@ -3721,6 +3888,8 @@ function refreshPanel() {
     optBtn('Auto-Director', 'Cuts between angles', camMode === 'auto', () => setCam('auto')), optBtn('Aerial', 'Slow orbit overhead', camMode === 'aerial', () => setCam('aerial')), optBtn('Follow the street race', 'Chase the race leader', camMode === 'race', () => setCam('race'), 'R'));
   $('carList').replaceChildren(optBtn('Philly Cab', 'The original', carIdx < 0, () => setPlayerCar(-1)), ...MODELS.map((m, i) => optBtn(m.name, 'From AFTERHOURS', carIdx === i, () => { setPlayerCar(i); if (P.mode !== 'drive') setMode('drive'); }, i === 0 ? 'G' : '')));
   $('camScenic').replaceChildren(...SCENIC.map((s, i) => optBtn(s.name, '', camMode === 'scenic' && scenicIdx === i, () => setCam('scenic', i), s.key)));
+  $('realOpts').replaceChildren(optBtn('Real Philly 3D', REAL.key ? (REAL.on ? 'On · Google photorealistic city (Fly)' : 'Google photorealistic city (Fly)') : 'Needs a Google Maps API key', REAL.on, () => (REAL.on ? disableReal() : enableReal()), 'P'),
+    optBtn(REAL.key ? 'Change API key' : 'Add Google API key', 'Map Tiles API · saved on this device only', false, askKey));
   $('gfxOpts').replaceChildren(optBtn('High', 'Shadows + glow', quality.level === 'high', () => setQuality('high')), optBtn('Medium', 'Glow, no shadows', quality.level === 'medium', () => setQuality('medium')), optBtn('Low', 'Fastest', quality.level === 'low', () => setQuality('low')));
 }
 function goTo(tp) {
@@ -3830,6 +3999,7 @@ addEventListener('keydown', e => {
   if (e.code === 'Digit8') setCam('scenic', 0); if (e.code === 'Digit9') setCam('scenic', 1); if (e.code === 'Digit0') setCam('scenic', 2);
   if (e.code === 'KeyV') { const i = FOLLOW.findIndex(f => f.id === camMode); setCam(FOLLOW[(i + 1) % FOLLOW.length].id); }
   if (e.code === 'KeyT') setTime(TIME_ORDER[(TIME_ORDER.indexOf(timeId) + 1) % 4]);
+  if (e.code === 'KeyP') { REAL.on ? disableReal() : enableReal(); }
   if (e.code === 'KeyG') { setPlayerCar(carIdx + 1); if (P.mode !== 'drive') setMode('drive'); }
   if (e.code === 'KeyR') setCam(camMode === 'race' ? 'chase' : 'race');
 });
@@ -3880,20 +4050,33 @@ async function boot() {
   status('Starting traffic…'); await nextFrame();
   buildTraffic(); buildRigs(); buildRace();
   try {
-    const [{ EffectComposer }, { RenderPass }, { UnrealBloomPass }, { OutputPass }] = await Promise.all(['EffectComposer', 'RenderPass', 'UnrealBloomPass', 'OutputPass'].map(f => import(ADDON(f))));
-    composer = new EffectComposer(renderer);
+    const [{ EffectComposer }, { RenderPass }, { UnrealBloomPass }, { OutputPass }, { ShaderPass }] = await Promise.all(['EffectComposer', 'RenderPass', 'UnrealBloomPass', 'OutputPass', 'ShaderPass'].map(f => import(ADDON(f))));
+    // multisampled HDR target: keeps edges smooth when post-processing is on
+    const pr = renderer.getPixelRatio();
+    const rt = new THREE.WebGLRenderTarget(innerWidth * pr, innerHeight * pr, { type: THREE.HalfFloatType, samples: isTouch ? 2 : 4 });
+    composer = new EffectComposer(renderer, rt);
     composer.addPass(new RenderPass(scene, camera));
+    if (!isTouch) {
+      try {
+        const { GTAOPass } = await import(ADDON('GTAOPass'));
+        aoPass = new GTAOPass(scene, camera, innerWidth, innerHeight);
+        aoPass.updateGtaoMaterial({ radius: 2.2, distanceExponent: 1.4, thickness: 1.5, scale: 1.1, samples: 12 });
+        aoPass.blendIntensity = 0.85;
+        composer.addPass(aoPass);
+      } catch (e) { console.warn('Ambient occlusion unavailable', e); aoPass = null; }
+    }
     bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.3, 0.5, 0.9);
     composer.addPass(bloomPass); composer.addPass(new OutputPass());
+    gradePass = new ShaderPass(GRADE_SHADER); composer.addPass(gradePass);
   } catch (e) { console.warn('Glow effects unavailable, rendering without them', e); composer = null; }
   bakeMap(); buildPanels();
   if (isTouch) { $('joy').hidden = false; $('hint').hidden = true; }
-  setQuality(isTouch || onPages ? 'medium' : 'high', true);
+  setQuality(isTouch ? 'medium' : 'high', true);
   setTime('golden', true);
   setMode('drive', true);
   teleport(P.pos.x, P.pos.z, 0);
   camera.position.set(P.pos.x - 6, 40, P.pos.z + 60);
-  window.__dev = { lmCount: () => LM.children.length, vis: (a, b) => { LM.children.forEach((o, i) => { o.visible = i >= a && i < b; }); }, desc: i => { const o = LM.children[i]; return [o.type, o.material?.type, o.material?.color?.getHexString?.(), o.material?.transparent, o.material?.side, o.geometry?.type, o.geometry?.attributes?.position?.count, o.position.toArray()]; }, pick: (s, nx, ny) => { shot(s); camera.position.set(...s.pos); camera.fov = s.fov; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); camera.lookAt(new V3(...s.look)); camera.updateMatrixWorld(); const rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(nx, ny), camera); const h = rc.intersectObjects(scene.children, true).slice(0, 3); return h.map(i => [i.distance.toFixed(1), i.object.type, i.object.parent === LM ? 'LM' : i.object.parent?.type, i.object.material?.color?.getHexString?.(), i.object.isInstancedMesh ? 'inst' : '', i.point.toArray().map(v => v.toFixed(1)).join(','), i.object.geometry.type, (i.object.geometry.attributes.position.count)]); }, probe: () => { const out = []; LM.traverse(o => { if (!o.geometry) return; const p = o.geometry.attributes.position; if (!p) return; let bad = 0; for (let i = 0; i < p.array.length; i++) if (!Number.isFinite(p.array[i])) { bad++; } const n = o.geometry.attributes.normal; let badn = 0; if (n) for (let i = 0; i < n.array.length; i++) if (!Number.isFinite(n.array[i])) badn++; o.geometry.computeBoundingSphere(); const r = o.geometry.boundingSphere.radius; if (n) for (let i = 0; i < n.array.length; i += 3) if (Math.hypot(n.array[i], n.array[i+1], n.array[i+2]) < 1e-6) badn++; if (bad || badn || !(r < 5000)) out.push([o.type, o.material?.color?.getHexString?.(), bad, badn, r, o.material?.name]); }); return out; }, shot, stats: () => ({ calls: (renderer.render(scene, camera), renderer.info.render.calls), tris: renderer.info.render.triangles, lmMeshes: LM.children.length, geoms: renderer.info.memory.geometries }), setTime, setMode, setCam, teleport, P, setPlayerCar, RACE, CARS,
+  window.__dev = { REAL, enableReal, disableReal, setQuality, quality, lmCount: () => LM.children.length, vis: (a, b) => { LM.children.forEach((o, i) => { o.visible = i >= a && i < b; }); }, desc: i => { const o = LM.children[i]; return [o.type, o.material?.type, o.material?.color?.getHexString?.(), o.material?.transparent, o.material?.side, o.geometry?.type, o.geometry?.attributes?.position?.count, o.position.toArray()]; }, pick: (s, nx, ny) => { shot(s); camera.position.set(...s.pos); camera.fov = s.fov; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); camera.lookAt(new V3(...s.look)); camera.updateMatrixWorld(); const rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(nx, ny), camera); const h = rc.intersectObjects(scene.children, true).slice(0, 3); return h.map(i => [i.distance.toFixed(1), i.object.type, i.object.parent === LM ? 'LM' : i.object.parent?.type, i.object.material?.color?.getHexString?.(), i.object.isInstancedMesh ? 'inst' : '', i.point.toArray().map(v => v.toFixed(1)).join(','), i.object.geometry.type, (i.object.geometry.attributes.position.count)]); }, probe: () => { const out = []; LM.traverse(o => { if (!o.geometry) return; const p = o.geometry.attributes.position; if (!p) return; let bad = 0; for (let i = 0; i < p.array.length; i++) if (!Number.isFinite(p.array[i])) { bad++; } const n = o.geometry.attributes.normal; let badn = 0; if (n) for (let i = 0; i < n.array.length; i++) if (!Number.isFinite(n.array[i])) badn++; o.geometry.computeBoundingSphere(); const r = o.geometry.boundingSphere.radius; if (n) for (let i = 0; i < n.array.length; i += 3) if (Math.hypot(n.array[i], n.array[i+1], n.array[i+2]) < 1e-6) badn++; if (bad || badn || !(r < 5000)) out.push([o.type, o.material?.color?.getHexString?.(), bad, badn, r, o.material?.name]); }); return out; }, shot, stats: () => ({ calls: (renderer.render(scene, camera), renderer.info.render.calls), tris: renderer.info.render.triangles, lmMeshes: LM.children.length, geoms: renderer.info.memory.geometries }), setTime, setMode, setCam, teleport, P, setPlayerCar, RACE, CARS,
     sim: (sec, input) => { if (input) Object.assign(keys, input); const n = Math.round(sec * 60); for (let i = 0; i < n; i++) { simT += 1 / 60; updateTraffic(1 / 60, simT); updateRace(1 / 60); updatePlayer(1 / 60); } if (input) for (const k in input) keys[k] = false; return [P.pos.x, P.pos.z, P.speed]; },
     raceCheck: () => { const bad = []; for (let s = 0; s < RACE.L; s += 4) for (const o of [-4.6, 0, 4.6]) { const [x, z] = racePoint(s, o); if (roofAt(x, z) > 0.5 || isWater(x, z)) bad.push([Math.round(x), Math.round(z)]); } return bad; },
     broadMarketGate: (preset = 'golden') => {
@@ -3947,6 +4130,8 @@ function frame(now) {
   const ld = sun.userData.dir || sunDir;
   const sc = SHOT ? SHOT.look : P.pos; sun.target.position.copy(sc); sun.position.copy(sc).addScaledVector(ld, 700);
   sky.position.copy(camera.position);
+  if (REAL.on && REAL.tiles) { camera.updateMatrixWorld(); REAL.tiles.update(); realGround(); }
+  if (gradePass) gradePass.uniforms.uTime.value = t % 100;
   if (quality.bloom && composer) composer.render(); else renderer.render(scene, camera);
   hudT -= dt;
   if (hudT <= 0) {
