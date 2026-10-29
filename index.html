@@ -355,6 +355,7 @@ function winMat(params, seed = 1.5) {
   const m = new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.02, ...params });
   m.onBeforeCompile = sh => {
     sh.uniforms.uNight = U.night; sh.uniforms.uLit = U.lit; sh.uniforms.uSeed = { value: seed };
+    sh.uniforms.uSkyTop = SURF.skyTop; sh.uniforms.uSkyHor = SURF.skyHor; sh.uniforms.uReflMix = SURF.reflMix;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
 #ifdef USE_INSTANCING
@@ -377,6 +378,7 @@ vWin = vec2((abs(normal.x) > 0.5 ? position.z * wsc.z : position.x * wsc.x) / 3.
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 uniform float uNight; uniform float uLit;
+uniform vec3 uSkyTop; uniform vec3 uSkyHor; uniform float uReflMix;
 varying vec2 vWin; varying float vSeed; varying float vRoof;
 float wHash(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
@@ -398,8 +400,13 @@ float spandrel = smoothstep(0.8, 0.88, wf.y) * (1.0 - wmask);
 float ledge = smoothstep(0.94, 0.99, wf.y);
 diffuseColor.rgb *= 1.0 - sill * 0.14 - spandrel * 0.2 - ledge * 0.1;
 diffuseColor.rgb *= 1.0 - (1.0 - wmask) * 0.06;
-float wFres = pow(1.0 - max(dot(normalize(normal), normalize(-vViewPosition)), 0.0), 2.8);
-diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.52, 0.64), wmask * wFres * 0.5 * (1.0 - uNight * 0.45));
+float wFres = pow(1.0 - max(dot(normalize(normal), normalize(-vViewPosition)), 0.0), 2.4);
+vec3 wRefl = reflect(normalize(-vViewPosition), normalize(normal));
+vec3 wSky = mix(uSkyHor, uSkyTop, clamp(wRefl.y * 0.55 + 0.45, 0.0, 1.0));
+diffuseColor.rgb = mix(diffuseColor.rgb, wSky, wmask * wFres * uReflMix * (0.55 + 0.35 * (1.0 - uNight)));
+diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.52, 0.64), wmask * wFres * 0.35 * (1.0 - uNight * 0.45));
+float wRecess = (1.0 - wmask) * 0.11;
+diffuseColor.rgb *= 1.0 - wRecess;
 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.05, 0.065, 0.09) + diffuseColor.rgb * 0.12 + vec3(0.05) * wr, wmask * 0.86);
 diffuseColor.rgb *= mix(1.0, 0.6, vRoof);`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
@@ -2521,9 +2528,16 @@ function buildGround() {
 }
 const ROAD_MATS = [];
 
+function arterialMeshBoost(x, z) {
+  const t = Math.min(Math.abs(x) / 240, Math.abs(z) / 240, 1);
+  return 1 + (1 - t) * 0.95;
+}
 function mergePatchGeo(pos, uv, ind, x0, x1, z0, z1, segX, segZ, yAt) {
   const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
   if (streetSkip(cx, cz, 10)) return;
+  const boost = arterialMeshBoost(cx, cz);
+  segX = Math.max(segX, Math.round(segX * boost));
+  segZ = Math.max(segZ, Math.round(segZ * boost));
   const base = pos.length / 3;
   for (let j = 0; j <= segZ; j++) for (let i = 0; i <= segX; i++) {
     const u = i / segX, v = j / segZ;
@@ -2545,7 +2559,9 @@ function buildStreetSurfaces() {
     const z0 = e.z - e.w / 2, z1 = e.z + e.w / 2, segZ = Math.max(3, Math.round(e.w / 1.6));
     for (let x = e.x0; x < e.x1; x += 42) {
       const x1 = Math.min(e.x1, x + 42);
-      mergePatchGeo(pos, uv, ind, x, x1, z0, z1, Math.max(4, Math.round((x1 - x) / 5.5)), segZ, yAsphalt);
+      const cx = (x + x1) / 2;
+      const step = e.name === 'Market St' || Math.abs(cx) < 260 ? 3.8 : 5.5;
+      mergePatchGeo(pos, uv, ind, x, x1, z0, z1, Math.max(4, Math.round((x1 - x) / step)), segZ, yAsphalt);
     }
   };
   const addNS = s => {
@@ -2553,7 +2569,9 @@ function buildStreetSurfaces() {
     const x0 = s.x - s.w / 2, x1 = s.x + s.w / 2, segX = Math.max(3, Math.round(s.w / 1.6));
     for (let z = z0; z < z1; z += 42) {
       const z2 = Math.min(z1, z + 42);
-      mergePatchGeo(pos, uv, ind, x0, x1, z, z2, segX, Math.max(4, Math.round((z2 - z) / 5.5)), yAsphalt);
+      const cz = (z + z2) / 2;
+      const step = s.name === 'Broad St' || Math.abs(cz) < 260 ? 3.8 : 5.5;
+      mergePatchGeo(pos, uv, ind, x0, x1, z, z2, segX, Math.max(4, Math.round((z2 - z) / step)), yAsphalt);
     }
   };
   for (const e of EW) addEW(e);
@@ -2598,8 +2616,9 @@ function buildBeveledCurbs() {
     const b = blockAt(xc, (z0 + z1) / 2);
     if (!b || b.k !== 'walk') return;
     const sw = GRD.swW;
-    const segX = Math.max(3, Math.round((x1 - x0) / 5));
-    const segZ = Math.max(3, Math.round((z1 - z0) / 5));
+    const boost = arterialMeshBoost(xc, (z0 + z1) / 2);
+    const segX = Math.max(3, Math.round((x1 - x0) / (5 / boost)));
+    const segZ = Math.max(3, Math.round((z1 - z0) / (5 / boost)));
     mergeCurbRun(pos, ind, x0, z0 + 0.12, x1, z0 + 0.12, 0, 1, segX);
     mergeCurbRun(pos, ind, x0, z1 - 0.12, x1, z1 - 0.12, 0, -1, segX);
     mergeCurbRun(pos, ind, x0 + 0.12, z0 + sw, x0 + 0.12, z1 - sw, 1, 0, segZ);
@@ -2647,13 +2666,16 @@ function buildArterialPalms() {
     dummy.position.set(s.x, ty, s.z);
     dummy.scale.set(rr(0.9, 1.05), s.h, rr(0.9, 1.05));
     dummy.updateMatrix(); trunks.setMatrixAt(i, dummy.matrix);
+    dummy.rotation.order = 'YXZ';
     for (let f = 0; f < frondsPer; f++) {
       const a = (f / frondsPer) * Math.PI * 2 + s.ry * 0.4;
-      dummy.rotation.set(-(0.48 + rnd() * 0.28), a, rnd() * 0.12);
-      dummy.position.set(s.x, ty + s.h * 0.94, s.z);
+      const droop = 0.52 + rnd() * 0.22, rad = 0.28 + rnd() * 0.18;
+      dummy.rotation.set(a, -droop, rnd() * 0.06);
+      dummy.position.set(s.x + Math.sin(a) * rad, ty + s.h * 0.9, s.z + Math.cos(a) * rad);
       dummy.scale.set(rr(0.82, 1.18), rr(0.95, 1.25), rr(0.82, 1.12));
       dummy.updateMatrix(); fronds.setMatrixAt(fi++, dummy.matrix);
     }
+    dummy.rotation.order = 'XYZ';
   });
   trunks.castShadow = fronds.castShadow = true; fronds.receiveShadow = true;
   trunks.frustumCulled = fronds.frustumCulled = false;
@@ -2711,6 +2733,36 @@ function buildBuildings() {
   });
   geo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seeds, 1));
   im.castShadow = im.receiveShadow = true; im.frustumCulled = false; scene.add(im);
+}
+
+function buildFacadeTrim() {
+  const nearArterial = b => b.h >= 18 && (Math.abs(b.x) < 340 || Math.abs(b.z) < 340);
+  const bases = B.filter(b => nearArterial(b));
+  const cornices = bases.filter(b => b.h >= 32);
+  if (!bases.length) return;
+  const baseMat = mat('#ffffff', { roughness: 0.78, metalness: 0.04 });
+  const cornMat = mat('#e8e2d8', { roughness: 0.48, metalness: 0.14 });
+  const baseIM = new THREE.InstancedMesh(BOXC, baseMat, bases.length);
+  const cornIM = new THREE.InstancedMesh(BOXC, cornMat, cornices.length);
+  bases.forEach((b, i) => {
+    const bh = Math.max(1.2, b.h * 0.065);
+    dummy.rotation.set(0, 0, 0);
+    dummy.position.set(b.x, b.y + bh / 2, b.z);
+    dummy.scale.set(b.w * 1.015, bh, b.d * 1.015);
+    dummy.updateMatrix(); baseIM.setMatrixAt(i, dummy.matrix);
+    tmpC.set(b.c).offsetHSL(0, 0, -0.14); baseIM.setColorAt(i, tmpC);
+  });
+  cornices.forEach((b, i) => {
+    const ch = Math.max(0.9, b.h * 0.032);
+    dummy.rotation.set(0, 0, 0);
+    dummy.position.set(b.x, b.y + b.h - ch / 2, b.z);
+    dummy.scale.set(b.w * 1.035, ch, b.d * 1.035);
+    dummy.updateMatrix(); cornIM.setMatrixAt(i, dummy.matrix);
+    tmpC.set(b.c).offsetHSL(0, -0.02, 0.08); cornIM.setColorAt(i, tmpC);
+  });
+  baseIM.castShadow = cornIM.castShadow = true; baseIM.receiveShadow = cornIM.receiveShadow = true;
+  baseIM.frustumCulled = cornIM.frustumCulled = false;
+  scene.add(baseIM, cornIM);
 }
 
 function buildTrees() {
@@ -3400,6 +3452,7 @@ const FOLLOW = [{ id: 'chase', name: '3rd-person chase', key: '5' }, { id: 'low'
 const raceCamPos = new V3(), raceCamLook = new V3();
 const steps = mw(64, 0);
 const SCENIC = [
+  { name: 'Broad & Market (golden)', key: '7', pos: [-14, 2.4, 98], look: [42, 10, 118], fov: 52, time: 'golden', q: 'high' },
   { name: 'City Hall from Broad St', key: '8', pos: [-8, 3, 390], look: [0, 112, -59], fov: 46 },
   { name: 'Art Museum steps', key: '9', pos: [steps.x, 15, steps.z], look: [0, 100, 0], fov: 44 },
   { name: 'Ben Franklin Bridge', key: '0', pos: [1866, 5, -318], look: [2350, 70, -400], fov: 52 },
@@ -3474,7 +3527,13 @@ function updateCamera(dt, t) {
   if (Math.abs(camera.fov - fov) > 0.05) { camera.fov += (fov - camera.fov) * Math.min(1, dt * 3); camera.updateProjectionMatrix(); }
 }
 function setCam(id, idx) {
-  camMode = id; if (id === 'scenic') scenicIdx = idx; autoT = 0; autoShot = 0; flybyPos = null;
+  camMode = id; if (id === 'scenic') {
+    scenicIdx = idx;
+    const s = SCENIC[idx];
+    if (s.time) setTime(s.time, true);
+    if (s.q) setQuality(s.q, true);
+  }
+  autoT = 0; autoShot = 0; flybyPos = null;
   refreshPanel();
   toast(id === 'scenic' ? SCENIC[idx].name : id === 'auto' ? 'Auto-Director' : id === 'aerial' ? 'Aerial' : id === 'race' ? 'Following the street race' : FOLLOW.find(f => f.id === id).name);
 }
@@ -3511,7 +3570,11 @@ function setTime(id, quiet) {
   SURF.skyHor.value.set(T.hor);
   SURF.reflMix.value = id === 'golden' ? 0.24 : id === 'midday' ? 0.14 : id === 'blue' ? 0.3 : 0.38;
   renderer.toneMappingExposure = T.exp;
-  if (bloomPass) bloomPass.strength = T.bloom;
+  if (bloomPass) {
+    bloomPass.strength = T.bloom;
+    bloomPass.threshold = id === 'golden' ? 0.68 : id === 'night' || id === 'blue' ? 0.42 : 0.82;
+    bloomPass.radius = id === 'golden' ? 0.58 : 0.46;
+  }
   if (envRT) envRT.dispose(); envRT = pmrem.fromScene(envScene, 0.04, 0.1, 1000); scene.environment = envRT.texture;
   if (rigs.drive) rigs.drive.spot.intensity = T.lamps > 0 ? 60 : 0;
   refreshPanel();
@@ -3770,7 +3833,7 @@ async function boot() {
   buildSidewalkSurfaces();
   status('Raising City Hall and the skyline…'); await nextFrame();
   buildLandmarks();
-  buildSlabs(); buildBuildings();
+  buildSlabs(); buildBuildings(); buildFacadeTrim();
   status('Planting autumn trees and street lamps…'); await nextFrame();
   buildTrees(); buildArterialPalms(); buildStreetDetail(); buildBeveledCurbs();
   status('Starting traffic…'); await nextFrame();
