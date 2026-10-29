@@ -37,3 +37,4 @@ City Hall · Comcast Technology Center · Comcast Center · One & Two Liberty Pl
 
 - Stylized scale (~130 m per numbered block), not survey-accurate.
 - See `docs/spec.md` for architecture and iteration ideas.
+- Street-level visual fidelity checklist and automated gate: `docs/visual-fidelity.md` and `scripts/fidelity-gate.mjs`.
