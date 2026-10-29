@@ -172,6 +172,8 @@ const ADDON = f => `https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/post
 const $ = id => document.getElementById(id);
 const status = t => { $('loadStatus').textContent = t; };
 const isTouch = matchMedia('(pointer: coarse)').matches;
+const onPages = /(?:^|\.)github\.io$/i.test(location.hostname);
+const DETAIL = isTouch ? 0.68 : onPages ? 0.82 : 1;
 const V3 = THREE.Vector3;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -276,7 +278,7 @@ function lineGlow(day, night) {
 }
 
 const SURF = {
-  wet: { value: 0 }, sunDir: { value: new V3(0, 1, 0) },
+  wet: { value: 0 }, sunDir: { value: new V3(0, 1, 0) }, lamps: { value: 0 },
   skyTop: { value: new THREE.Color('#2f5d9a') }, skyHor: { value: new THREE.Color('#f3b886') }, reflMix: { value: 0.14 }
 };
 const surfNoiseGLSL = `float surfHash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
@@ -290,9 +292,10 @@ function asphaltSurfMat() {
     sh.uniforms.uSkyTop = SURF.skyTop;
     sh.uniforms.uSkyHor = SURF.skyHor;
     sh.uniforms.uReflMix = SURF.reflMix;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>\nuniform float uWet;\nuniform vec3 uSunDir;\nuniform vec3 uSkyTop;\nuniform vec3 uSkyHor;\nuniform float uReflMix;\nvarying vec3 vSurfWP;`)
+    sh.uniforms.uLamps = SURF.lamps;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>\nuniform float uWet;\nuniform vec3 uSunDir;\nuniform vec3 uSkyTop;\nuniform vec3 uSkyHor;\nuniform float uReflMix;\nuniform float uLamps;\nvarying vec3 vSurfWP;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>\nvSurfWP = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nuniform float uWet;\nuniform vec3 uSunDir;\nuniform vec3 uSkyTop;\nuniform vec3 uSkyHor;\nuniform float uReflMix;\nvarying vec3 vSurfWP;\n${surfNoiseGLSL}`)
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nuniform float uWet;\nuniform vec3 uSunDir;\nuniform vec3 uSkyTop;\nuniform vec3 uSkyHor;\nuniform float uReflMix;\nuniform float uLamps;\nvarying vec3 vSurfWP;\n${surfNoiseGLSL}`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
 float ag = surfNoise(vSurfWP.xz * 0.22) * 0.55 + surfNoise(vSurfWP.xz * 1.35) * 0.35;
 roughnessFactor = mix(roughnessFactor, roughnessFactor * (0.68 + ag * 0.55), 0.92);
@@ -314,7 +317,10 @@ float fres = pow(1.0 - max(dot(nrm2, -vw2), 0.0), 2.8);
 vec3 reflDir = reflect(-vw2, nrm2);
 vec3 skyRefl = mix(uSkyHor, uSkyTop, clamp(reflDir.y * 0.55 + 0.45, 0.0, 1.0));
 float envW = uReflMix * (0.25 + uWet * 0.95 + fres * 0.55);
-diffuseColor.rgb = mix(diffuseColor.rgb, skyRefl, envW);`);
+diffuseColor.rgb = mix(diffuseColor.rgb, skyRefl, envW);
+float lampGrid = sin(vSurfWP.x * 0.38 + 0.7) * sin(vSurfWP.z * 0.33 + 1.1);
+float lampPool = smoothstep(0.72, 0.94, lampGrid) * uLamps * uWet * fres;
+diffuseColor.rgb += vec3(1.0, 0.78, 0.48) * lampPool * (0.22 + ag2 * 0.18);`);
   };
   ROAD_MATS.push(m); return m;
 }
@@ -340,12 +346,33 @@ diffuseColor.rgb += vec3(0.14, 0.14, 0.16) * edge * (0.35 + cg2 * 0.2);`);
 function concreteSurfMat() {
   const m = new THREE.MeshStandardMaterial({ color: '#d5cfc4', roughness: 0.94, metalness: 0.02 });
   m.onBeforeCompile = sh => {
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>\nvarying vec3 vSurfWP;`)
+    sh.uniforms.uWet = SURF.wet;
+    sh.uniforms.uLamps = SURF.lamps;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>\nuniform float uWet;\nuniform float uLamps;\nvarying vec3 vSurfWP;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>\nvSurfWP = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nvarying vec3 vSurfWP;\n${surfNoiseGLSL}`)
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nuniform float uWet;\nuniform float uLamps;\nvarying vec3 vSurfWP;\n${surfNoiseGLSL}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 float slab = step(0.92, fract(vSurfWP.x * 0.14)) * step(0.92, fract(vSurfWP.z * 0.14));
-diffuseColor.rgb *= 0.94 + surfNoise(vSurfWP.xz * 2.4) * 0.08 - slab * 0.06;`);
+diffuseColor.rgb *= 0.94 + surfNoise(vSurfWP.xz * 2.4) * 0.08 - slab * 0.06;
+diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.9, 0.92, 0.96), uWet * 0.22);
+float swLamp = smoothstep(0.78, 0.95, sin(vSurfWP.x * 0.41) * sin(vSurfWP.z * 0.36)) * uLamps * uWet;
+diffuseColor.rgb += vec3(0.16, 0.13, 0.09) * swLamp;`);
+  };
+  return m;
+}
+
+function lanePaintMat() {
+  const m = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.36, metalness: 0.2, polygonOffset: true, polygonOffsetFactor: -2 });
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uNight = U.night;
+    sh.uniforms.uLamps = SURF.lamps;
+    sh.uniforms.uWet = SURF.wet;
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nuniform float uNight;\nuniform float uLamps;\nuniform float uWet;`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+roughnessFactor = mix(roughnessFactor, 0.12, uNight * 0.55 + uWet * 0.35);
+metalnessFactor = mix(metalnessFactor, 0.45, uNight * 0.4 + uWet * 0.25);`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+totalEmissiveRadiance += diffuseColor.rgb * uNight * uLamps * 0.08;`);
   };
   return m;
 }
@@ -2538,6 +2565,10 @@ function mergePatchGeo(pos, uv, ind, x0, x1, z0, z1, segX, segZ, yAt) {
   const boost = arterialMeshBoost(cx, cz);
   segX = Math.max(segX, Math.round(segX * boost));
   segZ = Math.max(segZ, Math.round(segZ * boost));
+  if (DETAIL < 1) {
+    segX = Math.max(3, Math.round(segX * DETAIL));
+    segZ = Math.max(3, Math.round(segZ * DETAIL));
+  }
   const base = pos.length / 3;
   for (let j = 0; j <= segZ; j++) for (let i = 0; i <= segX; i++) {
     const u = i / segX, v = j / segZ;
@@ -2642,13 +2673,15 @@ function buildArterialPalms() {
   };
   const broad = NS.find(s => s.name === 'Broad St');
   if (broad) {
-    for (let z = broad.z0 + 50; z < broad.z1 - 40; z += 34) {
+    const zStep = DETAIL < 0.85 ? 46 : 34;
+    for (let z = broad.z0 + 50; z < broad.z1 - 40; z += zStep) {
       for (const side of [-1, 1]) place(broad.x + side * (broad.w / 2 + GRD.swW * 0.58), z + rr(-1.5, 1.5));
     }
   }
   const market = EW.find(e => e.name === 'Market St');
   if (market) {
-    for (let x = market.x0 + 55; x < market.x1 - 55; x += 40) {
+    const xStep = DETAIL < 0.85 ? 52 : 40;
+    for (let x = market.x0 + 55; x < market.x1 - 55; x += xStep) {
       if (streetSkip(x, market.z, 6)) continue;
       for (const side of [-1, 1]) place(x + rr(-2, 2), market.z + side * (market.w / 2 + GRD.swW * 0.58));
     }
@@ -2876,16 +2909,19 @@ function buildStreetDetail() {
       joints.push([x1 - sw / 2, t, sw - 0.2, 0.06, 0]);
     }
   });
-  const paint = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2 }), dashes.length + cross.length);
+  const paintCross = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2 }), cross.length);
+  const paintDash = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), lanePaintMat(), dashes.length);
   dashes.forEach(([x, z, w, d, c, y], i) => {
     dummy.position.set(x, y ?? paintY(x, z), z); dummy.rotation.set(0, 0, 0);
-    dummy.scale.set(w, 1, d); dummy.updateMatrix(); paint.setMatrixAt(i, dummy.matrix); paint.setColorAt(i, tmpC.set(c));
+    dummy.scale.set(w, 1, d); dummy.updateMatrix(); paintDash.setMatrixAt(i, dummy.matrix); paintDash.setColorAt(i, tmpC.set(c));
   });
   cross.forEach(([x, z, w, d, c, y, rot], i) => {
     dummy.position.set(x, y, z); dummy.rotation.set(0, rot || 0, 0);
-    dummy.scale.set(w, 1, d); dummy.updateMatrix(); paint.setMatrixAt(i + dashes.length, dummy.matrix); paint.setColorAt(i + dashes.length, tmpC.set(c));
+    dummy.scale.set(w, 1, d); dummy.updateMatrix(); paintCross.setMatrixAt(i, dummy.matrix); paintCross.setColorAt(i, tmpC.set(c));
   });
-  paint.receiveShadow = true; paint.frustumCulled = false; scene.add(paint);
+  paintDash.receiveShadow = paintCross.receiveShadow = true;
+  paintDash.frustumCulled = paintCross.frustumCulled = false;
+  scene.add(paintDash, paintCross);
 
   const walkIM = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -1 }), walks.length);
   walks.forEach(([x, z, w, d, c, y], i) => {
@@ -3453,6 +3489,7 @@ const raceCamPos = new V3(), raceCamLook = new V3();
 const steps = mw(64, 0);
 const SCENIC = [
   { name: 'Broad & Market (golden)', key: '7', pos: [-14, 2.4, 98], look: [42, 10, 118], fov: 52, time: 'golden', q: 'high' },
+  { name: 'Broad & Market (wet night)', key: '6', pos: [-10, 2.1, 105], look: [38, 6, 125], fov: 54, time: 'night', q: 'high' },
   { name: 'City Hall from Broad St', key: '8', pos: [-8, 3, 390], look: [0, 112, -59], fov: 46 },
   { name: 'Art Museum steps', key: '9', pos: [steps.x, 15, steps.z], look: [0, 100, 0], fov: 44 },
   { name: 'Ben Franklin Bridge', key: '0', pos: [1866, 5, -318], look: [2350, 70, -400], fov: 52 },
@@ -3540,10 +3577,10 @@ function setCam(id, idx) {
 
 // ---------------------------------------------------------------- time of day
 const TIMES = {
-  golden: { label: 'Golden hour', el: 8, az: 245, sun: '#ffbd7a', sunI: 3.4, hTop: '#ffd9b0', hBot: '#6b4a34', hI: 1.0, top: '#2f5d9a', hor: '#f3b886', bot: '#5a4a40', fog: '#e2b48c', fogD: 0.00032, env: 0.7, night: 0.22, lit: 0.25, lamps: 0.15, stars: 0, bloom: 0.32, exp: 1.0, sunVis: 1, shadow: true, wet: 0.18 },
+  golden: { label: 'Golden hour', el: 8, az: 245, sun: '#ffbd7a', sunI: 3.55, hTop: '#ffd9b0', hBot: '#6b4a34', hI: 1.0, top: '#2f5d9a', hor: '#f3b886', bot: '#5a4a40', fog: '#e2b48c', fogD: 0.00032, env: 0.7, night: 0.22, lit: 0.25, lamps: 0.15, stars: 0, bloom: 0.32, exp: 1.0, sunVis: 1, shadow: true, wet: 0.18 },
   midday: { label: 'Midday', el: 58, az: 165, sun: '#fff6e8', sunI: 3.2, hTop: '#cfe3ff', hBot: '#8a7a62', hI: 1.15, top: '#2a63b4', hor: '#c4dbf0', bot: '#7a8a96', fog: '#bcd2e6', fogD: 0.00024, env: 1.0, night: 0, lit: 0, lamps: 0, stars: 0, bloom: 0.08, exp: 1.0, sunVis: 1, shadow: true, wet: 0 },
   blue: { label: 'Blue hour', el: -5, az: 255, sun: '#8ea4e0', sunI: 0.55, hTop: '#5a72c0', hBot: '#22202e', hI: 0.75, top: '#0f1c46', hor: '#6f6aa8', bot: '#1a1828', fog: '#3e4683', fogD: 0.00036, env: 0.45, night: 0.75, lit: 0.5, lamps: 1, stars: 0.25, bloom: 0.55, exp: 1.05, sunVis: 0, shadow: false, wet: 0.5 },
-  night: { label: 'Night', el: 38, az: 140, sun: '#9fb2e0', sunI: 0.32, hTop: '#2c3566', hBot: '#0b0b12', hI: 0.45, top: '#04060f', hor: '#1d2142', bot: '#07080c', fog: '#15182c', fogD: 0.00045, env: 0.18, night: 0.85, lit: 0.38, lamps: 1.1, stars: 0.6, bloom: 0.5, exp: 1.0, sunVis: 0.12, shadow: false, wet: 0.7 }
+  night: { label: 'Night', el: 38, az: 140, sun: '#9fb2e0', sunI: 0.32, hTop: '#2c3566', hBot: '#0b0b12', hI: 0.45, top: '#04060f', hor: '#1d2142', bot: '#07080c', fog: '#15182c', fogD: 0.00045, env: 0.18, night: 0.85, lit: 0.38, lamps: 1.1, stars: 0.6, bloom: 0.5, exp: 1.0, sunVis: 0.12, shadow: false, wet: 0.82 }
 };
 const TIME_ORDER = ['golden', 'midday', 'blue', 'night'];
 let timeId = 'golden', bloomPass, composer, lampLevel = 0;
@@ -3569,6 +3606,8 @@ function setTime(id, quiet) {
   SURF.skyTop.value.set(T.top);
   SURF.skyHor.value.set(T.hor);
   SURF.reflMix.value = id === 'golden' ? 0.24 : id === 'midday' ? 0.14 : id === 'blue' ? 0.3 : 0.38;
+  SURF.lamps.value = T.lamps;
+  if (id === 'golden' && quality.shadows) sun.shadow.normalBias = 0.48;
   renderer.toneMappingExposure = T.exp;
   if (bloomPass) {
     bloomPass.strength = T.bloom;
@@ -3847,14 +3886,21 @@ async function boot() {
   } catch (e) { console.warn('Glow effects unavailable, rendering without them', e); composer = null; }
   bakeMap(); buildPanels();
   if (isTouch) { $('joy').hidden = false; $('hint').hidden = true; }
-  setQuality(isTouch ? 'medium' : 'high', true);
+  setQuality(isTouch || onPages ? 'medium' : 'high', true);
   setTime('golden', true);
   setMode('drive', true);
   teleport(P.pos.x, P.pos.z, 0);
   camera.position.set(P.pos.x - 6, 40, P.pos.z + 60);
   window.__dev = { lmCount: () => LM.children.length, vis: (a, b) => { LM.children.forEach((o, i) => { o.visible = i >= a && i < b; }); }, desc: i => { const o = LM.children[i]; return [o.type, o.material?.type, o.material?.color?.getHexString?.(), o.material?.transparent, o.material?.side, o.geometry?.type, o.geometry?.attributes?.position?.count, o.position.toArray()]; }, pick: (s, nx, ny) => { shot(s); camera.position.set(...s.pos); camera.fov = s.fov; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); camera.lookAt(new V3(...s.look)); camera.updateMatrixWorld(); const rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(nx, ny), camera); const h = rc.intersectObjects(scene.children, true).slice(0, 3); return h.map(i => [i.distance.toFixed(1), i.object.type, i.object.parent === LM ? 'LM' : i.object.parent?.type, i.object.material?.color?.getHexString?.(), i.object.isInstancedMesh ? 'inst' : '', i.point.toArray().map(v => v.toFixed(1)).join(','), i.object.geometry.type, (i.object.geometry.attributes.position.count)]); }, probe: () => { const out = []; LM.traverse(o => { if (!o.geometry) return; const p = o.geometry.attributes.position; if (!p) return; let bad = 0; for (let i = 0; i < p.array.length; i++) if (!Number.isFinite(p.array[i])) { bad++; } const n = o.geometry.attributes.normal; let badn = 0; if (n) for (let i = 0; i < n.array.length; i++) if (!Number.isFinite(n.array[i])) badn++; o.geometry.computeBoundingSphere(); const r = o.geometry.boundingSphere.radius; if (n) for (let i = 0; i < n.array.length; i += 3) if (Math.hypot(n.array[i], n.array[i+1], n.array[i+2]) < 1e-6) badn++; if (bad || badn || !(r < 5000)) out.push([o.type, o.material?.color?.getHexString?.(), bad, badn, r, o.material?.name]); }); return out; }, shot, stats: () => ({ calls: (renderer.render(scene, camera), renderer.info.render.calls), tris: renderer.info.render.triangles, lmMeshes: LM.children.length, geoms: renderer.info.memory.geometries }), setTime, setMode, setCam, teleport, P, setPlayerCar, RACE, CARS,
     sim: (sec, input) => { if (input) Object.assign(keys, input); const n = Math.round(sec * 60); for (let i = 0; i < n; i++) { simT += 1 / 60; updateTraffic(1 / 60, simT); updateRace(1 / 60); updatePlayer(1 / 60); } if (input) for (const k in input) keys[k] = false; return [P.pos.x, P.pos.z, P.speed]; },
-    raceCheck: () => { const bad = []; for (let s = 0; s < RACE.L; s += 4) for (const o of [-4.6, 0, 4.6]) { const [x, z] = racePoint(s, o); if (roofAt(x, z) > 0.5 || isWater(x, z)) bad.push([Math.round(x), Math.round(z)]); } return bad; } };
+    raceCheck: () => { const bad = []; for (let s = 0; s < RACE.L; s += 4) for (const o of [-4.6, 0, 4.6]) { const [x, z] = racePoint(s, o); if (roofAt(x, z) > 0.5 || isWater(x, z)) bad.push([Math.round(x), Math.round(z)]); } return bad; },
+    broadMarketGate: (preset = 'golden') => {
+      const s = SCENIC.find(x => x.name.includes('Broad & Market') && x.time === preset) || SCENIC[0];
+      teleport(5, 120, 0);
+      shot({ pos: s.pos, look: s.look, fov: s.fov, time: s.time || preset, q: s.q || 'high' });
+      const st = (renderer.render(scene, camera), { calls: renderer.info.render.calls, tris: renderer.info.render.triangles });
+      return { ok: st.tris > 4.5e6 && st.tris < 11e6, preset, tris: st.tris, calls: st.calls, detail: DETAIL, onPages };
+    } };
   status('Ready'); window.__ready = true;
   $('loader').style.opacity = 0; setTimeout(() => { $('loader').style.display = 'none'; }, 650);
   requestAnimationFrame(frame);

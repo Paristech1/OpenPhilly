@@ -11,6 +11,7 @@ Reference: modern open-world street chase — dense geometry, PBR materials, str
 | Sidewalk mesh | Subdivided concrete with slab variation | Done |
 | Materials | Procedural noise, wetness + sky reflection response | Done |
 | Wet pavement | View-dependent sun streaks when wet | Done |
+| Wet night | Lamp pools on wet asphalt/sidewalk + reflective lane paint | Done |
 | Sky reflection | Fresnel sky tint on asphalt (PMREM-aligned colors) | Done |
 | Curbs | Beveled merged geometry + granite specular shader | Done |
 | Buildings | Window shader + sills/spandrels + sky glass reflections | Done |
@@ -21,7 +22,8 @@ Reference: modern open-world street chase — dense geometry, PBR materials, str
 | Lighting | 4K shadows (high), wider frustum, exposure | Done |
 | Post | Bloom strength/threshold/radius per time preset | Done |
 | Cars | AFTERHOURS high-poly models | Done |
-| Capture gate | Scenic camera “Broad & Market (golden)” | Done |
-| Next loop | Side-by-side reference compare, performance budget on Pages, wet night pass | Planned |
+| Capture gate | Scenic cameras + `__dev.broadMarketGate()` | Done |
+| Pages perf | `DETAIL` scale + medium default on github.io | Done |
+| Next loop | Reference side-by-side sign-off, merge follow-ups | Planned |
 
 Loop continues until street-level views read close to reference while staying playable on GitHub Pages.
