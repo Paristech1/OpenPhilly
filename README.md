@@ -14,6 +14,7 @@ OpenPhilly/
 
 1. Open `index.html` in a modern browser (needs internet for three.js and fonts from jsDelivr / Google Fonts).
 2. Or serve it locally: `python3 -m http.server 8000`, then visit `http://localhost:8000`.
+3. Visual regression: `npm install && npm run test:harness` (headless Chrome + SwiftShader).
 
 ## Controls
 
@@ -23,6 +24,7 @@ OpenPhilly/
 | 5–7 | Chase, low-angle, first-person cameras |
 | 8–0 | Scenic shots |
 | T | Time of day (Golden Hour, Midday, Blue Hour, Night) |
+| Y | Rain (wet roads + showers) |
 | M | Street Atlas map (click to teleport) |
 
 On phones: on-screen joystick, fly up/down buttons, drag to look.

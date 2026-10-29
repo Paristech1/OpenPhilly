@@ -1,0 +1,11 @@
+{
+  "name": "openphilly",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:harness": "node scripts/harness.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^24.2.0"
+  }
+}

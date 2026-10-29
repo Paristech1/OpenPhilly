@@ -134,8 +134,10 @@ kbd{font-family:var(--mono);font-size:10px;color:var(--dim);border:1px solid var
   <div class="list" id="tpList"></div>
   <h2>Graphics</h2>
   <div class="grid2" id="gfxOpts"></div>
+  <h2>Weather</h2>
+  <div class="grid2" id="weatherOpts"></div>
   <h2>Controls</h2>
-  <div class="keys"><b>W A S D</b> / arrows move · <b>Shift</b> boost<br><b>Space</b>/<b>E</b> climb · <b>Q</b>/<b>C</b> descend (fly)<br><b>1–4</b> modes · <b>5–0</b> cameras · <b>V</b> next follow cam<br><b>T</b> time of day · <b>M</b> map · <b>G</b> next car · <b>R</b> race cam<br>drag to look · scroll to zoom</div>
+  <div class="keys"><b>W A S D</b> / arrows move · <b>Shift</b> boost<br><b>Space</b>/<b>E</b> climb · <b>Q</b>/<b>C</b> descend (fly)<br><b>1–4</b> modes · <b>5–0</b> cameras · <b>V</b> next follow cam<br><b>T</b> time of day · <b>Y</b> rain · <b>M</b> map · <b>G</b> next car · <b>R</b> race cam<br>drag to look · scroll to zoom</div>
 </aside>
 
 <div id="hint" class="hud glass"><b>WASD</b> drive · <b>Shift</b> boost · drag to look<br><b>1–4</b> modes · <b>5–0</b> cameras · <b>T</b> time · <b>M</b> map</div>
@@ -2997,6 +2999,48 @@ const TIMES = {
 };
 const TIME_ORDER = ['golden', 'midday', 'blue', 'night'];
 let timeId = 'golden', bloomPass, composer, lampLevel = 0;
+let rainOn = false, rainPts = null, rainGeo = null, rainVel = null;
+const RAIN_N = 10000;
+function roadWet() {
+  const base = TIMES[timeId].wet;
+  return rainOn ? Math.min(1, Math.max(base, 0.58)) : base;
+}
+function applyRoadWet() {
+  const w = roadWet();
+  for (const m of ROAD_MATS) { m.roughness = 0.92 - w * 0.55; m.metalness = w * 0.25; }
+}
+function buildRain() {
+  const pos = new Float32Array(RAIN_N * 3), vel = new Float32Array(RAIN_N);
+  for (let i = 0; i < RAIN_N; i++) {
+    pos[i * 3] = (rnd() - 0.5) * 100; pos[i * 3 + 1] = rnd() * 70 + 8; pos[i * 3 + 2] = (rnd() - 0.5) * 100;
+    vel[i] = 24 + rnd() * 16;
+  }
+  rainGeo = new THREE.BufferGeometry();
+  rainGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  rainPts = new THREE.Points(rainGeo, new THREE.PointsMaterial({ color: 0xb8cce8, size: 0.32, transparent: true, opacity: 0.5, depthWrite: false, sizeAttenuation: true }));
+  rainPts.frustumCulled = false; rainPts.visible = false; scene.add(rainPts); rainVel = vel;
+}
+function updateRain(dt) {
+  if (!rainOn || !rainGeo) return;
+  const p = rainGeo.attributes.position.array, cx = camera.position.x, cz = camera.position.z;
+  rainPts.position.set(cx, 0, cz);
+  for (let i = 0; i < RAIN_N; i++) {
+    p[i * 3 + 1] -= rainVel[i] * dt;
+    if (p[i * 3 + 1] < 2) {
+      p[i * 3] = (rnd() - 0.5) * 130; p[i * 3 + 1] = 55 + rnd() * 35; p[i * 3 + 2] = (rnd() - 0.5) * 130;
+    }
+  }
+  rainGeo.attributes.position.needsUpdate = true;
+}
+function setRain(on, quiet) {
+  if (on && quality.level === 'low') on = false;
+  rainOn = !!on;
+  if (rainPts) rainPts.visible = rainOn;
+  applyRoadWet();
+  if (bloomPass) bloomPass.strength = TIMES[timeId].bloom + (rainOn && timeId === 'night' ? 0.06 : 0);
+  refreshPanel();
+  if (!quiet) toast(rainOn ? 'Rain' : 'Dry skies');
+}
 function setTime(id, quiet) {
   timeId = id; const T = TIMES[id];
   const el = T.el * Math.PI / 180, az = T.az * Math.PI / 180;
@@ -3013,9 +3057,9 @@ function setTime(id, quiet) {
   for (const g of GLOW) g.m.emissiveIntensity = g.k * T.lamps;
   for (const l of LGLOW) l.m.color.copy(T.lamps > 0 ? l.night.clone().multiplyScalar(1 + T.lamps * 2) : l.day);
   if (poolMat) poolMat.opacity = Math.min(1, T.lamps * 0.6);
-  for (const m of ROAD_MATS) { m.roughness = 0.92 - T.wet * 0.55; m.metalness = T.wet * 0.25; }
+  applyRoadWet();
   renderer.toneMappingExposure = T.exp;
-  if (bloomPass) bloomPass.strength = T.bloom;
+  if (bloomPass) bloomPass.strength = T.bloom + (rainOn && id === 'night' ? 0.06 : 0);
   if (envRT) envRT.dispose(); envRT = pmrem.fromScene(envScene, 0.04, 0.1, 1000); scene.environment = envRT.texture;
   if (rigs.drive) rigs.drive.spot.intensity = T.lamps > 0 ? 60 : 0;
   refreshPanel();
@@ -3025,10 +3069,12 @@ function setTime(id, quiet) {
 // ---------------------------------------------------------------- quality
 const quality = { level: 'high', shadows: true, bloom: true };
 function setQuality(l, quiet) {
+  const prev = quality.level;
   quality.level = l; quality.shadows = l === 'high'; quality.bloom = l !== 'low';
   renderer.setPixelRatio(l === 'low' ? 1 : Math.min(devicePixelRatio, maxPR));
   renderer.setSize(innerWidth, innerHeight); if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(innerWidth, innerHeight); }
   sun.castShadow = TIMES[timeId].shadow && quality.shadows;
+  if (rainOn && (l === 'low' || (!quiet && isTouch && prev === 'high' && l === 'medium'))) setRain(false, true);
   refreshPanel(); if (!quiet) toast('Graphics: ' + l);
 }
 
@@ -3120,6 +3166,7 @@ function refreshPanel() {
   $('carList').replaceChildren(optBtn('Philly Cab', 'The original', carIdx < 0, () => setPlayerCar(-1)), ...MODELS.map((m, i) => optBtn(m.name, 'From AFTERHOURS', carIdx === i, () => { setPlayerCar(i); if (P.mode !== 'drive') setMode('drive'); }, i === 0 ? 'G' : '')));
   $('camScenic').replaceChildren(...SCENIC.map((s, i) => optBtn(s.name, '', camMode === 'scenic' && scenicIdx === i, () => setCam('scenic', i), s.key)));
   $('gfxOpts').replaceChildren(optBtn('High', 'Shadows + glow', quality.level === 'high', () => setQuality('high')), optBtn('Medium', 'Glow, no shadows', quality.level === 'medium', () => setQuality('medium')), optBtn('Low', 'Fastest', quality.level === 'low', () => setQuality('low')));
+  $('weatherOpts').replaceChildren(optBtn('Rain', 'Wet roads + showers', rainOn, () => setRain(!rainOn), 'Y'));
 }
 function goTo(tp) {
   teleport(tp.x, tp.z, tp.yaw, tp.y);
@@ -3225,6 +3272,7 @@ addEventListener('keydown', e => {
   if (e.code === 'Digit8') setCam('scenic', 0); if (e.code === 'Digit9') setCam('scenic', 1); if (e.code === 'Digit0') setCam('scenic', 2);
   if (e.code === 'KeyV') { const i = FOLLOW.findIndex(f => f.id === camMode); setCam(FOLLOW[(i + 1) % FOLLOW.length].id); }
   if (e.code === 'KeyT') setTime(TIME_ORDER[(TIME_ORDER.indexOf(timeId) + 1) % 4]);
+  if (e.code === 'KeyY') setRain(!rainOn);
   if (e.code === 'KeyG') { setPlayerCar(carIdx + 1); if (P.mode !== 'drive') setMode('drive'); }
   if (e.code === 'KeyR') setCam(camMode === 'race' ? 'chase' : 'race');
 });
@@ -3271,7 +3319,7 @@ async function boot() {
   status('Planting autumn trees and street lamps…'); await nextFrame();
   buildTrees(); buildStreetDetail();
   status('Starting traffic…'); await nextFrame();
-  buildTraffic(); buildRigs(); buildRace();
+  buildTraffic(); buildRigs(); buildRace(); buildRain();
   try {
     const [{ EffectComposer }, { RenderPass }, { UnrealBloomPass }, { OutputPass }] = await Promise.all(['EffectComposer', 'RenderPass', 'UnrealBloomPass', 'OutputPass'].map(f => import(ADDON(f))));
     composer = new EffectComposer(renderer);
@@ -3286,7 +3334,7 @@ async function boot() {
   setMode('drive', true);
   teleport(P.pos.x, P.pos.z, 0);
   camera.position.set(P.pos.x - 6, 40, P.pos.z + 60);
-  window.__dev = { lmCount: () => LM.children.length, vis: (a, b) => { LM.children.forEach((o, i) => { o.visible = i >= a && i < b; }); }, desc: i => { const o = LM.children[i]; return [o.type, o.material?.type, o.material?.color?.getHexString?.(), o.material?.transparent, o.material?.side, o.geometry?.type, o.geometry?.attributes?.position?.count, o.position.toArray()]; }, pick: (s, nx, ny) => { shot(s); camera.position.set(...s.pos); camera.fov = s.fov; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); camera.lookAt(new V3(...s.look)); camera.updateMatrixWorld(); const rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(nx, ny), camera); const h = rc.intersectObjects(scene.children, true).slice(0, 3); return h.map(i => [i.distance.toFixed(1), i.object.type, i.object.parent === LM ? 'LM' : i.object.parent?.type, i.object.material?.color?.getHexString?.(), i.object.isInstancedMesh ? 'inst' : '', i.point.toArray().map(v => v.toFixed(1)).join(','), i.object.geometry.type, (i.object.geometry.attributes.position.count)]); }, probe: () => { const out = []; LM.traverse(o => { if (!o.geometry) return; const p = o.geometry.attributes.position; if (!p) return; let bad = 0; for (let i = 0; i < p.array.length; i++) if (!Number.isFinite(p.array[i])) { bad++; } const n = o.geometry.attributes.normal; let badn = 0; if (n) for (let i = 0; i < n.array.length; i++) if (!Number.isFinite(n.array[i])) badn++; o.geometry.computeBoundingSphere(); const r = o.geometry.boundingSphere.radius; if (n) for (let i = 0; i < n.array.length; i += 3) if (Math.hypot(n.array[i], n.array[i+1], n.array[i+2]) < 1e-6) badn++; if (bad || badn || !(r < 5000)) out.push([o.type, o.material?.color?.getHexString?.(), bad, badn, r, o.material?.name]); }); return out; }, shot, stats: () => ({ calls: (renderer.render(scene, camera), renderer.info.render.calls), tris: renderer.info.render.triangles, lmMeshes: LM.children.length, geoms: renderer.info.memory.geometries }), setTime, setMode, setCam, teleport, P, setPlayerCar, RACE, CARS,
+  window.__dev = { lmCount: () => LM.children.length, vis: (a, b) => { LM.children.forEach((o, i) => { o.visible = i >= a && i < b; }); }, desc: i => { const o = LM.children[i]; return [o.type, o.material?.type, o.material?.color?.getHexString?.(), o.material?.transparent, o.material?.side, o.geometry?.type, o.geometry?.attributes?.position?.count, o.position.toArray()]; }, pick: (s, nx, ny) => { shot(s); camera.position.set(...s.pos); camera.fov = s.fov; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); camera.lookAt(new V3(...s.look)); camera.updateMatrixWorld(); const rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(nx, ny), camera); const h = rc.intersectObjects(scene.children, true).slice(0, 3); return h.map(i => [i.distance.toFixed(1), i.object.type, i.object.parent === LM ? 'LM' : i.object.parent?.type, i.object.material?.color?.getHexString?.(), i.object.isInstancedMesh ? 'inst' : '', i.point.toArray().map(v => v.toFixed(1)).join(','), i.object.geometry.type, (i.object.geometry.attributes.position.count)]); }, probe: () => { const out = []; LM.traverse(o => { if (!o.geometry) return; const p = o.geometry.attributes.position; if (!p) return; let bad = 0; for (let i = 0; i < p.array.length; i++) if (!Number.isFinite(p.array[i])) { bad++; } const n = o.geometry.attributes.normal; let badn = 0; if (n) for (let i = 0; i < n.array.length; i++) if (!Number.isFinite(n.array[i])) badn++; o.geometry.computeBoundingSphere(); const r = o.geometry.boundingSphere.radius; if (n) for (let i = 0; i < n.array.length; i += 3) if (Math.hypot(n.array[i], n.array[i+1], n.array[i+2]) < 1e-6) badn++; if (bad || badn || !(r < 5000)) out.push([o.type, o.material?.color?.getHexString?.(), bad, badn, r, o.material?.name]); }); return out; }, shot, stats: () => ({ calls: (renderer.render(scene, camera), renderer.info.render.calls), tris: renderer.info.render.triangles, lmMeshes: LM.children.length, geoms: renderer.info.memory.geometries }), setTime, setMode, setCam, teleport, P, setPlayerCar, setRain, rainOn: () => rainOn, RACE, CARS,
     sim: (sec, input) => { if (input) Object.assign(keys, input); const n = Math.round(sec * 60); for (let i = 0; i < n; i++) { simT += 1 / 60; updateTraffic(1 / 60, simT); updateRace(1 / 60); updatePlayer(1 / 60); } if (input) for (const k in input) keys[k] = false; return [P.pos.x, P.pos.z, P.speed]; },
     raceCheck: () => { const bad = []; for (let s = 0; s < RACE.L; s += 4) for (const o of [-4.6, 0, 4.6]) { const [x, z] = racePoint(s, o); if (roofAt(x, z) > 0.5 || isWater(x, z)) bad.push([Math.round(x), Math.round(z)]); } return bad; } };
   status('Ready'); window.__ready = true;
@@ -3304,6 +3352,7 @@ function shot(s) {
 let last = performance.now(), hudT = 0, fpsAcc = 0, fpsN = 0, fpsT = -6;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now; const t = now / 1000;
+  updateRain(dt);
   updateTraffic(dt, t); updateRace(dt); updatePlayer(dt); updateRig(dt); updateCamera(dt, t);
   if (SHOT) { camera.position.copy(SHOT.pos); camera.fov = SHOT.fov; camera.updateProjectionMatrix(); camera.lookAt(SHOT.look); }
   for (const j of JETS) j.o.scale.y = j.h * (0.85 + Math.sin(t * 3 + j.p) * 0.15);
