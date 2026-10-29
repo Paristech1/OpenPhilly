@@ -190,10 +190,11 @@ try {
   status('WebGL is not available in this browser, so the city cannot be drawn.');
   throw e;
 }
-const maxPR = isTouch ? 1.5 : 2;
+const maxPR = isTouch ? 1.5 : 2.25;
 renderer.setPixelRatio(Math.min(devicePixelRatio, maxPR));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.06;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -205,9 +206,9 @@ const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffffff, 3);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -210, right: 210, top: 210, bottom: -210, near: 10, far: 1600 });
-sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.8;
+sun.shadow.mapSize.set(4096, 4096);
+Object.assign(sun.shadow.camera, { left: -240, right: 240, top: 240, bottom: -240, near: 10, far: 1800 });
+sun.shadow.bias = -0.00035; sun.shadow.normalBias = 0.65;
 scene.add(sun, sun.target);
 const sunDir = new V3(0, 1, 0);
 
@@ -240,10 +241,10 @@ const pmrem = new THREE.PMREMGenerator(renderer);
 let envRT = null;
 
 // ---------------------------------------------------------------- shared geometry & materials
-const BOX = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
-const BOXC = new THREE.BoxGeometry(1, 1, 1);
-const CYL6 = new THREE.CylinderGeometry(0.5, 0.5, 1, 6).translate(0, 0.5, 0);
-const ICO = new THREE.IcosahedronGeometry(1, 0);
+const BOX = new THREE.BoxGeometry(1, 1, 1, 2, 6, 2).translate(0, 0.5, 0);
+const BOXC = new THREE.BoxGeometry(1, 1, 1, 1, 2, 1);
+const CYL6 = new THREE.CylinderGeometry(0.5, 0.55, 1, 12).translate(0, 0.5, 0);
+const ICO = new THREE.IcosahedronGeometry(1, 1);
 const tri = new THREE.Shape(); tri.moveTo(-0.5, 0); tri.lineTo(0.5, 0); tri.lineTo(0, 1); tri.closePath();
 const PRISM = new THREE.ExtrudeGeometry(tri, { depth: 1, bevelEnabled: false }).translate(0, 0, -0.5);
 const dummy = new THREE.Object3D();
@@ -266,6 +267,41 @@ function glowMat(c, emissive, k, o = {}) {
 function lineGlow(day, night) {
   const m = new THREE.LineBasicMaterial({ color: day, fog: true });
   LGLOW.push({ m, day: new THREE.Color(day), night: new THREE.Color(night) }); return m;
+}
+
+const SURF = { wet: { value: 0 } };
+const surfNoiseGLSL = `float surfHash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+float surfNoise(vec2 p){ vec2 i=floor(p); vec2 f=fract(p); f=f*f*(3.0-2.0*f);
+return mix(mix(surfHash(i), surfHash(i+vec2(1.0,0.0)), f.x), mix(surfHash(i+vec2(0.0,1.0)), surfHash(i+vec2(1.0,1.0)), f.x), f.y); }`;
+function asphaltSurfMat() {
+  const m = new THREE.MeshStandardMaterial({ color: '#232428', roughness: 0.9, metalness: 0.05 });
+  m.onBeforeCompile = sh => {
+    sh.uniforms.uWet = SURF.wet;
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>\nuniform float uWet;\nvarying vec3 vSurfWP;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\nvSurfWP = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nuniform float uWet;\nvarying vec3 vSurfWP;\n${surfNoiseGLSL}`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+float ag = surfNoise(vSurfWP.xz * 0.22) * 0.55 + surfNoise(vSurfWP.xz * 1.35) * 0.35;
+roughnessFactor = mix(roughnessFactor, roughnessFactor * (0.68 + ag * 0.55), 0.92);
+metalnessFactor = mix(metalnessFactor, 0.08 + ag * 0.12, uWet * 0.85);`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+float ag2 = surfNoise(vSurfWP.xz * 0.55);
+diffuseColor.rgb *= 0.86 + ag2 * 0.18;
+diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.75, 0.78, 0.82), uWet * 0.35);`);
+  };
+  ROAD_MATS.push(m); return m;
+}
+function concreteSurfMat() {
+  const m = new THREE.MeshStandardMaterial({ color: '#d5cfc4', roughness: 0.94, metalness: 0.02 });
+  m.onBeforeCompile = sh => {
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', `#include <common>\nvarying vec3 vSurfWP;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\nvSurfWP = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nvarying vec3 vSurfWP;\n${surfNoiseGLSL}`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+float slab = step(0.92, fract(vSurfWP.x * 0.14)) * step(0.92, fract(vSurfWP.z * 0.14));
+diffuseColor.rgb *= 0.94 + surfNoise(vSurfWP.xz * 2.4) * 0.08 - slab * 0.06;`);
+  };
+  return m;
 }
 
 // Procedural facade windows: lit at night, glassy by day. Works on instanced and plain meshes.
@@ -2432,6 +2468,82 @@ function buildGround() {
 }
 const ROAD_MATS = [];
 
+function mergePatchGeo(pos, uv, ind, x0, x1, z0, z1, segX, segZ, yAt) {
+  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+  if (streetSkip(cx, cz, 10)) return;
+  const base = pos.length / 3;
+  for (let j = 0; j <= segZ; j++) for (let i = 0; i <= segX; i++) {
+    const u = i / segX, v = j / segZ;
+    const x = x0 + (x1 - x0) * u, z = z0 + (z1 - z0) * v;
+    const y = yAt(x, z);
+    pos.push(x, y, z); uv.push(u * (x1 - x0) * 0.08, v * (z1 - z0) * 0.08);
+  }
+  for (let j = 0; j < segZ; j++) for (let i = 0; i < segX; i++) {
+    const a = base + j * (segX + 1) + i;
+    ind.push(a, a + segX + 1, a + 1, a + 1, a + segX + 1, a + segX + 2);
+  }
+}
+
+function buildStreetSurfaces() {
+  const pos = [], uv = [], ind = [];
+  const yAsphalt = (x, z) => streetSurfaceY(x, z) + 0.028;
+  const addEW = e => {
+    if (e.z < -820 || e.z > 1180) return;
+    const z0 = e.z - e.w / 2, z1 = e.z + e.w / 2, segZ = Math.max(3, Math.round(e.w / 1.6));
+    for (let x = e.x0; x < e.x1; x += 42) {
+      const x1 = Math.min(e.x1, x + 42);
+      mergePatchGeo(pos, uv, ind, x, x1, z0, z1, Math.max(4, Math.round((x1 - x) / 5.5)), segZ, yAsphalt);
+    }
+  };
+  const addNS = s => {
+    const z0 = s.z0 ?? -900, z1 = s.z1 ?? 1200;
+    const x0 = s.x - s.w / 2, x1 = s.x + s.w / 2, segX = Math.max(3, Math.round(s.w / 1.6));
+    for (let z = z0; z < z1; z += 42) {
+      const z2 = Math.min(z1, z + 42);
+      mergePatchGeo(pos, uv, ind, x0, x1, z, z2, segX, Math.max(4, Math.round((z2 - z) / 5.5)), yAsphalt);
+    }
+  };
+  for (const e of EW) addEW(e);
+  for (const e of EWW) addEW(e);
+  for (const s of NS) addNS(s);
+  for (const s of NSW) addNS(s);
+  if (!pos.length) return;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(ind);
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, asphaltSurfMat());
+  mesh.receiveShadow = true; mesh.frustumCulled = false; scene.add(mesh);
+}
+
+function buildSidewalkSurfaces() {
+  const pos = [], uv = [], ind = [];
+  const ySw = () => GRD.sw + 0.012;
+  const addStrip = (x0, x1, z0, z1) => {
+    if (x1 - x0 < 0.4 || z1 - z0 < 0.4) return;
+    mergePatchGeo(pos, uv, ind, x0, x1, z0, z1, Math.max(2, Math.round((x1 - x0) / 4)), Math.max(1, Math.round((z1 - z0) / 1.2)), () => ySw());
+  };
+  forEachBlock((x0, x1, z0, z1, xc) => {
+    if (streetSkip(xc, (z0 + z1) / 2, 8)) return;
+    const b = blockAt(xc, (z0 + z1) / 2);
+    if (!b || b.k !== 'walk') return;
+    const sw = GRD.swW;
+    addStrip(x0, x1, z0, z0 + sw);
+    addStrip(x0, x1, z1 - sw, z1);
+    addStrip(x0, x0 + sw, z0 + sw, z1 - sw);
+    addStrip(x1 - sw, x1, z0 + sw, z1 - sw);
+  });
+  if (!pos.length) return;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(ind);
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, concreteSurfMat());
+  mesh.receiveShadow = true; mesh.frustumCulled = false; scene.add(mesh);
+}
+
 function buildSlabs() {
   const cols = { walk: '#8f8b83', park: '#56683a', river: '#5c6c3c', lawn: '#62773f', plaza: '#a9a294' };
   const im = new THREE.InstancedMesh(BOX, mat('#ffffff', { roughness: 0.95 }), SLABS.length);
@@ -3246,6 +3358,7 @@ function setTime(id, quiet) {
   for (const l of LGLOW) l.m.color.copy(T.lamps > 0 ? l.night.clone().multiplyScalar(1 + T.lamps * 2) : l.day);
   if (poolMat) poolMat.opacity = Math.min(1, T.lamps * 0.6);
   for (const m of ROAD_MATS) { m.roughness = 0.92 - T.wet * 0.55; m.metalness = T.wet * 0.25; }
+  SURF.wet.value = T.wet;
   renderer.toneMappingExposure = T.exp;
   if (bloomPass) bloomPass.strength = T.bloom;
   if (envRT) envRT.dispose(); envRT = pmrem.fromScene(envScene, 0.04, 0.1, 1000); scene.environment = envRT.texture;
@@ -3260,6 +3373,8 @@ function setQuality(l, quiet) {
   quality.level = l; quality.shadows = l === 'high'; quality.bloom = l !== 'low';
   renderer.setPixelRatio(l === 'low' ? 1 : Math.min(devicePixelRatio, maxPR));
   renderer.setSize(innerWidth, innerHeight); if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(innerWidth, innerHeight); }
+  const sm = l === 'high' ? 4096 : l === 'medium' ? 2048 : 1024;
+  sun.shadow.mapSize.set(sm, sm);
   sun.castShadow = TIMES[timeId].shadow && quality.shadows;
   refreshPanel(); if (!quiet) toast('Graphics: ' + l);
 }
@@ -3500,6 +3615,8 @@ async function boot() {
   buildGround();
   genGrid(NS, EW, -1505, 1880);
   genGrid(NSW, EWW, -2300, -1640);
+  buildStreetSurfaces();
+  buildSidewalkSurfaces();
   status('Raising City Hall and the skyline…'); await nextFrame();
   buildLandmarks();
   buildSlabs(); buildBuildings();
