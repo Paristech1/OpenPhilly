@@ -24,6 +24,23 @@ Reference: modern open-world street chase — dense geometry, PBR materials, str
 | Cars | AFTERHOURS high-poly models | Done |
 | Capture gate | Scenic cameras + `__dev.broadMarketGate()` | Done |
 | Pages perf | `DETAIL` scale + medium default on github.io | Done |
-| Next loop | Reference side-by-side sign-off, merge follow-ups | Planned |
+| Drive-through gate | Simulated northbound Broad drive in `broadMarketGate` | Done |
 
-Loop continues until street-level views read close to reference while staying playable on GitHub Pages.
+## Acceptance (automated)
+
+From repo root (with a static server serving `index.html`):
+
+```bash
+cd scripts && npm install && npm run fidelity-gate -- http://127.0.0.1:8765/index.html
+```
+
+Pass criteria (proxy for “reads close to reference” without a pinned reference frame in CI):
+
+1. No page errors during load.
+2. `broadMarketGate('golden')` and `('night')` both return `ok: true`.
+3. Triangle count between **4.5M** and **11M** on desktop `DETAIL=1`.
+4. Drive sim reaches **z > 205** on Broad St from City Hall spawn (northbound ~6 s).
+
+Manual: teleport **City Hall (Broad & Market)**, golden hour, drive north on Broad; graphics **High** on capable desktops, **Medium** default on GitHub Pages.
+
+Play: https://paristech1.github.io/OpenPhilly/
