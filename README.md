@@ -26,6 +26,7 @@ OpenPhilly/
 | 8–0 | Scenic shots |
 | T | Time of day (Golden Hour, Midday, Blue Hour, Night) |
 | M | Street Atlas map (click to teleport) |
+| K | Rain on/off |
 | P | Real Philly 3D: Google photorealistic city in Fly mode (needs a Google Maps API key with Map Tiles API) |
 
 On phones: on-screen joystick, fly up/down buttons, drag to look.
