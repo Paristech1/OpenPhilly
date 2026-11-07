@@ -4423,7 +4423,7 @@ function refreshPanel() {
     optBtn(REAL.key ? 'Change API key' : 'Add Google API key', 'Map Tiles API · saved on this device only', false, askKey));
   $('wxOpts').replaceChildren(optBtn('Rain', 'Wet streets, falling rain', RAIN.on, () => setRain(!RAIN.on), 'K'));
   $('lookOpts').replaceChildren(optBtn('Auto', 'Tuned per time of day', FILM.look === 'auto', () => setLook('auto'), 'L'), ...Object.keys(LOOKS).map(k => optBtn(LOOKS[k].name, LOOKS[k].sub, FILM.look === k, () => setLook(k))));
-  $('glareOpts').replaceChildren(...[['auto', 'Auto', 'Per time of day'], ['off', 'Off', ''], ['anamorphic', 'Anamorphic', 'Horizontal streaks'], ['star', 'Star', 'Four-point'] ].map(([g, n, sub]) => optBtn('Glare: ' + n, sub, FILM.glare === g, () => setGlare(g))));
+  $('glareOpts').replaceChildren(...[['auto', 'Auto', 'Per time of day'], ['off', 'Off', ''], ['anamorphic', 'Anamorphic', 'Horizontal streaks'], ['star', 'Star', 'Four-point']].map(([g, n, sub]) => optBtn('Glare: ' + n, sub, FILM.glare === g, () => setGlare(g))));
   $('filmOpts').replaceChildren(optBtn('Lens effects', 'Vignette, dispersion, grain', FILM.lensFx, () => { FILM.lensFx = !FILM.lensFx; applyFilm(); refreshPanel(); }),
     optBtn('Cinematic bars', '2.39 frame on Director & scenic cams', FILM.cineBars, () => { FILM.cineBars = !FILM.cineBars; refreshPanel(); }));
   $('gfxOpts').replaceChildren(optBtn('High', 'Shadows + glow', quality.level === 'high', () => setQuality('high')), optBtn('Medium', 'Glow, no shadows', quality.level === 'medium', () => setQuality('medium')), optBtn('Low', 'Fastest', quality.level === 'low', () => setQuality('low')));
@@ -4526,7 +4526,6 @@ addEventListener('keydown', e => {
   keys[e.code] = true;
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
   if (e.repeat) return;
-  if (e.code === 'KeyL') setLook(nextLook());
   const mapOpen = !$('map').hidden;
   if (e.code === 'Escape') { if (mapOpen) closeMap(); else $('panel').hidden = true; return; }
   if (e.code === 'KeyM') { mapOpen ? closeMap() : openMap(); return; }
@@ -4541,6 +4540,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyP') { REAL.on ? disableReal() : enableReal(); }
   if (e.code === 'KeyG') { setPlayerCar(carIdx + 1); if (P.mode !== 'drive') setMode('drive'); }
   if (e.code === 'KeyR') setCam(camMode === 'race' ? 'chase' : 'race');
+  if (e.code === 'KeyL') setLook(nextLook());
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
@@ -4650,7 +4650,6 @@ async function boot() {
       return { ok: triOk && driveOk, preset, tris: st.tris, calls: st.calls, detail: DETAIL, onPages, driveZ: P.pos.z, driveOk, triOk };
     } };
   Object.assign(window.__dev, { FILM, setLook, setGlare, applyFilm });
-  window.__shoot = s => { if (s.scenic !== undefined) setCam('scenic', s.scenic); if (s.time) setTime(s.time, true); };
   status('Ready'); window.__ready = true;
   $('loader').style.opacity = 0; setTimeout(() => { $('loader').style.display = 'none'; }, 650);
   requestAnimationFrame(frame);
@@ -4673,11 +4672,11 @@ function frame(now) {
   if (ciraMat) { if (lampLevel > 0) { ciraMat.emissive.setHSL((t * 0.03) % 1, 0.85, 0.5); ciraMat.emissiveIntensity = lampLevel * 0.55; } else ciraMat.emissiveIntensity = 0; }
   const ld = sun.userData.dir || sunDir;
   const sc = SHOT ? SHOT.look : P.pos; sun.target.position.copy(sc); sun.position.copy(sc).addScaledVector(ld, 700);
-  sky.position.copy(camera.position);
+  sky.position.copy(camera.position); skyU.uTime.value = t % 10000; FOL.time.value = t % 1000;
   if (REAL.on && REAL.tiles) { camera.updateMatrixWorld(); REAL.tiles.update(); realGround(); }
   if (filmPass) filmPass.uniforms.uTime.value = t % 100;
-  if (RAIN.on) { RAIN.uT.value = t % 1000; RAIN.mesh.position.set(camera.position.x, camera.position.y - 10, camera.position.z); }
   updateBars(dt);
+  if (RAIN.on) { RAIN.uT.value = t % 1000; RAIN.mesh.position.set(camera.position.x, camera.position.y - 10, camera.position.z); }
   if (quality.bloom && composer) composer.render(); else renderer.render(scene, camera);
   hudT -= dt;
   if (hudT <= 0) {
