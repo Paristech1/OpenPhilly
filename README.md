@@ -28,12 +28,23 @@ OpenPhilly/
 | M | Street Atlas map (click to teleport) |
 | K | Rain on/off |
 | P | Real Philly 3D: Google photorealistic city in Fly mode (needs a Google Maps API key with Map Tiles API) |
+| L | Cycle film look (Auto, Base, Punchy, Cinema, Noir, Film stock) |
 
 On phones: on-screen joystick, fly up/down buttons, drag to look.
 
 ## Landmarks
 
 City Hall · Comcast Technology Center · Comcast Center · One & Two Liberty Place · BNY Mellon Center · Three Logan Square · Commerce Square · PSFS Building · Independence Hall, Congress Hall & Old City Hall · Liberty Bell Center · National Constitution Center · Christ Church · Rittenhouse, Washington & Franklin Squares · LOVE Park · Logan Circle (Swann Fountain) · Cathedral Basilica · Free Library · Franklin Institute · Eakins Oval · Philadelphia Museum of Art (72 steps) · Fairmount Water Works · Boathouse Row & Turtle Rock Lighthouse · Ben Franklin Bridge · Reading Terminal Market · Convention Center · Chinatown Friendship Gate · Italian Market · South Street · 30th Street Station · Cira Centre · FMC Tower · Moshulu · USS Olympia & Becuna · RiverRink · Spruce Street Harbor Park
+
+## Film pipeline
+
+Presentation stack modelled on [vork](https://github.com/voyager-so/vork)'s compositor/display order (clean-room GLSL, no vork code):
+
+- **AgX display transform** with ASC-CDL looks (replaces ACES + the old display-space grade)
+- **White balance** in Kelvin (Planckian locus + Bradford adaptation), tuned per time of day
+- **Glare**: quarter-res Kawase streaks: anamorphic or four-point star on lamps and headlights
+- **Lens FX**: linear-light vignette, radial dispersion, grain, triangular display dither
+- **Cinematic bars** (2.39) with a title caption on Auto-Director and scenic cameras
 
 ## Notes
 
