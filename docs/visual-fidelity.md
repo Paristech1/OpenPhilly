@@ -21,6 +21,8 @@ Reference: modern open-world street chase — dense geometry, PBR materials, str
 | Street lamps | 16-seg poles, spherical heads | Done |
 | Lighting | 4K shadows (high), wider frustum, exposure | Done |
 | Post | Bloom strength/threshold/radius per time preset | Done |
+| Film | AgX + looks, white balance, glare streaks, lens FX, cinematic bars | Done |
+| Photo mode | Progressive accumulation, thin-lens DOF, tap-to-focus, capture | Done |
 | Cars | AFTERHOURS high-poly models | Done |
 | Capture gate | Scenic cameras + `__dev.broadMarketGate()` | Done |
 | Pages perf | `DETAIL` scale + medium default on github.io | Done |
