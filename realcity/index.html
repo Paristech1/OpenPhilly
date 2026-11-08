@@ -5124,6 +5124,7 @@ function* rcBuild(t, d) {
     for (let i = 0; i < n0; i++) { P0[2 * i] = d.ox + d.rp[2 * (s + i)] / 4; P0[2 * i + 1] = -(d.oy + d.rp[2 * (s + i) + 1] / 4); }
     s += n0; let w = RC_RCLS_W[c];
     const tr = rcIsTrench(P0, n0);
+    if (c === 5) { const mx = P0[(n0 >> 1) * 2], mz = P0[(n0 >> 1) * 2 + 1], dx = mx + 1470.3, dz = mz + 1475.9, pu = dx * 0.71203 + dz * 0.70215, pv = -dx * 0.70215 + dz * 0.71203; if (pu > 66 && pu < 120 && Math.abs(pv) < 36) continue; }   // the Art Museum's own stair model replaces OSM's steps/footway here
     if (!tr && rcIsTunnel(P0, n0)) continue;   // covered roadways (e.g. I-76 under the 30th St decks) would clash with the streets above; the Vine St trench's short tunnels stay
     const ow = (fl & 4) ? ((fl & 8) ? -1 : 1) : 0, ln = (fl >> 4) & 7;
     if (ow && c !== 3 && c !== 4) w = ln ? clamp(ln * 3.5 + 2.2, 6, RC_RCLS_W[c]) : c === 0 ? 14 : c === 6 ? 6.5 : RC_RCLS_W[c];   // one carriageway of a divided road is narrower than the two-way default
@@ -5407,7 +5408,7 @@ SCENIC.push(
   rcS('Center City from the Delaware', 39.9462, -75.1385, 8, towerTop.slice(), 36),
   { name: 'Boathouse Row lights (night)', pos: [-2027, 4, -1745], look: [-1990, 6, -1900], fov: 46, time: 'night' },
   { name: 'Ben Franklin Bridge from the Race St Pier', pos: [1981, 6, 25], look: [2205, 70, -103], fov: 50 },
-  { name: 'Art Museum steps', pos: [-1340, 3, -1345], look: [-1450, 20, -1455], fov: 50 },
+  { name: 'Art Museum steps', pos: [-1372, 5, -1377], look: [-1455, 17, -1460], fov: 52 },
   rcS('Rittenhouse Square', 39.9499, -75.1735, 2, rcL(39.9496, -75.1718, 18), 58),
   rcS('Wissahickon Valley (aerial)', 40.0300, -75.2070, 420, rcL(40.0560, -75.2200, 0), 50),
   rcS('Germantown rooftops (aerial)', 40.0200, -75.1580, 260, rcL(40.0262, -75.1665, 15), 44),
@@ -5645,7 +5646,7 @@ SCENIC.push(
   { name: 'Fishtown rows (Frankford Ave)', pos: [2640, 70, -1720], look: [2502.8, 12, -1850.4], fov: 50 },
   { name: 'East Passyunk rows', pos: [130, 60, 2720], look: [-18, 10, 2591], fov: 50 },
   { name: 'West Philly porch twins (Spruce Hill)', pos: [-4150, 75, 430], look: [-4290.7, 20, 303.7], fov: 50 },
-  { name: 'Fitler Academics Plus from Seymour (night)', pos: [-223.1, 1.8, -8245.8], look: [-236.8, 9, -8208], fov: 70, time: 'night' },
+  { name: 'Fitler Academics Plus from Seymour (night)', pos: [-196, 2.2, -8262], look: [-236.8, 8, -8208], fov: 62, time: 'night' },
   { name: 'Cira Centre from 30th St', pos: [-1440, 45, -640], look: [-1593, 85, -555], fov: 50 },
   { name: 'BNY Mellon Center over Rittenhouse', pos: [-420, 90, 250], look: [-490, 180, -145], fov: 50 },
   { name: 'Franklin Institute colonnade', pos: [-660, 4, -630], look: [-739, 16, -646], fov: 55 },
@@ -5837,7 +5838,7 @@ function rcTerrainCut(m) {   // terrain fragments over open cuts are discarded s
     sh.uniforms.uTrM1 = { value: M1.tex }; sh.uniforms.uTrA1 = { value: new THREE.Vector2(M1.x0, M1.z0) }; sh.uniforms.uTrS1 = { value: new THREE.Vector2(...M1.size) };
     sh.vertexShader = 'varying vec3 vTrW;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n  vTrW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.fragmentShader = 'varying vec3 vTrW;\nuniform sampler2D uTrM0, uTrM1; uniform vec2 uTrA0, uTrS0, uTrA1, uTrS1;\n' + sh.fragmentShader.replace('#include <clipping_planes_fragment>',
-      '#include <clipping_planes_fragment>\n  { vec2 a = (vTrW.xz - uTrA0) / uTrS0; if (a.x > 0.0 && a.x < 1.0 && a.y > 0.0 && a.y < 1.0 && texture2D(uTrM0, a).r > 0.75) discard;\n    vec2 b = (vTrW.xz - uTrA1) / uTrS1; if (b.x > 0.0 && b.x < 1.0 && b.y > 0.0 && b.y < 1.0 && texture2D(uTrM1, b).r > 0.75) discard; }');
+      '#include <clipping_planes_fragment>\n  { vec2 a = (vTrW.xz - uTrA0) / uTrS0; if (a.x > 0.0 && a.x < 1.0 && a.y > 0.0 && a.y < 1.0 && texture2D(uTrM0, a).r > 0.75) discard;\n    vec2 b = (vTrW.xz - uTrA1) / uTrS1; if (b.x > 0.0 && b.x < 1.0 && b.y > 0.0 && b.y < 1.0 && texture2D(uTrM1, b).r > 0.75) discard;\n    vec2 pd = vTrW.xz - vec2(-1470.3, -1475.9); float pu = dot(pd, vec2(0.71203, 0.70215)), pv = dot(pd, vec2(-0.70215, 0.71203)); if (pu > 69.0 && pu < 117.5 && abs(pv) < 33.0) discard; }');   // the 30 m terrain grid can't follow the 72 steps: let the Art Museum stair model show
   };
   m.needsUpdate = true;
 }
@@ -6334,12 +6335,16 @@ function* rcStreetTrees(t, d) {
   yield; RC._ts = performance.now(); RC.phase = 'treemesh';
   for (const m of rcTreeMeshesG(list, t.i * 977 + t.j, [])) { scene.add(m); t.meshes.push(m); yield; RC._ts = performance.now(); }
 }
+function rcPmaAxis(x, z) {   // keep the Art Museum steps / Eakins Oval axis open (no trees in front of the 72 steps)
+  const dx = x + 1470.3, dz = z + 1475.9, a = (dx + dz) * 0.7071, b = Math.abs(dx - dz) * 0.7071; return a > 30 && a < 300 && b < 42;
+}
 function rcTreeBlocked(x, z) {
   // inside (or hugging) a building footprint collider, or on a landmark
   const a = GRID.get(Math.floor(x / GS) * 100003 + Math.floor(z / GS)); if (a) for (const c of a) {
     const dx = x - c.cx, dz = z - c.cz, u = dx * c.c - dz * c.s, v = dx * c.s + dz * c.c;
     if (Math.abs(u) < c.hx + 1.0 && Math.abs(v) < c.hz + 1.0) return true;
   }
+  if (rcPmaAxis(x, z)) return true;
   return RC.excl && RC.excl.length && rcExclusion(x, z) === 2;
 }
 // park / woodland trees with the species mix (replaces the single-blob version)
@@ -6375,6 +6380,7 @@ rcTrees = function (l) {
       list.push({ x, z, y: rcH(x, z), sp: ['plane', 'plane', 'plane', 'oak', 'maple', 'column'][Math.floor(R() * 6)], sc: 1.3 + R() * 0.35 });
     }
   }
+  for (let i = list.length - 1; i >= 0; i--) if (rcPmaAxis(list[i].x, list[i].z)) list.splice(i, 1);
   for (const m of rcTreeMeshes(list, 1701, false)) { m.userData.keepGeo = true; scene.add(m); }
 };
 // tile drop: shared instanced geometries must not be disposed with the tile
