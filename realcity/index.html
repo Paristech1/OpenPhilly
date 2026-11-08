@@ -5482,7 +5482,7 @@ const BFB = Object.assign(LMF(2461.4, -36.0, 14.57), { UPA: -1010, UNJ: 1252, GP
 // Blender set 2 (Center City towers, LOVE Park, Independence Hall, 30th St): grid frames at 9.18°, u = east, v = south.
 // Each: frame, z0 (base used in Blender), exclusion box [u0,u1,v0,v1] and collider boxes [u0,u1,v0,v1,top above z0]
 // neighbourhood packs built with tools/build_area.py: [x, z, radius, glb]
-const RC_PACKS = [[-3778.0, -13731.0, 240, 'ch'], [2502.8, -1850.4, 220, 'fi'], [-18.0, 2591.0, 210, 'ep'], [-4290.7, 303.7, 220, 'wp'], [494.7, 1491.7, 200, 'bv'], [-1086.2, 1092.0, 200, 'gh'], [-915.3, -1650.5, 210, 'fm'], [323.8, 647.9, 200, 'ws'], [1904.7, -1295.2, 200, 'nl'], [1263.8, 1536.2, 200, 'qv'], [-1257.1, 1813.7, 200, 'pb'], [-1710.0, -2461.1, 200, 'bt'], [2801.9, -2960.7, 200, 'ek'], [-5188.0, -8123.8, 220, 'my'], [1691.0, 203.7, 200, 'oc'], [-4718.0, -9012.0, 210, 'rx'], [-18.0, -8623.4, 200, 'wi'], [-3179.8, -73.8, 210, 'uc'], [4938.3, -3626.9, 210, 'pr'], [-1641.6, -4515.2, 210, 'sm'], [-7110.7, -3626.9, 210, 'ob'], [1263.8, 2868.6, 210, 'ps'], [-1086.2, -8345.8, 200, 'pk'], [4297.4, -4903.8, 210, 'ka'], [6732.8, -7180.0, 210, 'fr'], [2972.8, -9622.7, 210, 'ol'], [-6555.2, 425.8, 210, 'cc']];
+const RC_PACKS = [[-3778.0, -13731.0, 240, 'ch'], [2502.8, -1850.4, 220, 'fi'], [-18.0, 2591.0, 210, 'ep'], [-4290.7, 303.7, 220, 'wp'], [494.7, 1491.7, 200, 'bv'], [-1086.2, 1092.0, 200, 'gh'], [-915.3, -1650.5, 210, 'fm'], [323.8, 647.9, 200, 'ws'], [1904.7, -1295.2, 200, 'nl'], [1263.8, 1536.2, 200, 'qv'], [-1257.1, 1813.7, 200, 'pb'], [-1710.0, -2461.1, 200, 'bt'], [2801.9, -2960.7, 200, 'ek'], [-5188.0, -8123.8, 220, 'my'], [1691.0, 203.7, 200, 'oc'], [-4718.0, -9012.0, 210, 'rx'], [-18.0, -8623.4, 200, 'wi'], [-3179.8, -73.8, 210, 'uc'], [4938.3, -3626.9, 210, 'pr'], [-1641.6, -4515.2, 210, 'sm'], [-7110.7, -3626.9, 210, 'ob'], [1263.8, 2868.6, 210, 'ps'], [-1086.2, -8345.8, 200, 'pk'], [4297.4, -4903.8, 210, 'ka'], [6732.8, -7180.0, 210, 'fr'], [2972.8, -9622.7, 210, 'ol'], [-6555.2, 425.8, 210, 'cb']];
 const LM2 = [
   { n: 'One Liberty Place', F: LMF(-371.47, -26.07, 9.18), z0: 11.97, ex: [-31, 31, -31, 31], cols: [[-30.5, 30.5, -30.8, 30.8, 9], [-28.5, 28.5, -28.5, 28.5, 236], [-22.5, 22.5, -22.5, 22.5, 262], [-9, 9, -9, 9, 276]] },
   { n: 'Two Liberty Place', F: LMF(-312.63, 72.28, 9.18), z0: 12.36, ex: [-25, 25, -27, 27], cols: [[-23.7, 23.7, -25.4, 25.4, 9], [-22.5, 22.5, -20, 20, 210], [-12.5, 12.5, -10.5, 10.5, 240]] },
@@ -5966,6 +5966,15 @@ function rcPickStyle(k, reg, area, h, r) {
     default: return r < 0.6 ? 0 : r < 0.82 ? 1 : 4;
   }
 }
+const RC_STORE_P = { cc: 0.75, south: 0.8, north: 0.65, ne: 0.6, west: 0.55, gtown: 0.6, manayunk: 0.85 };
+const RC_SIGN = ['#7a1f1f', '#1f3a5a', '#2d4a2f', '#1c1c1e', '#c9a227', '#5a2d5a', '#b8452a', '#e8e2d4', '#20545a'].map(h => new THREE.Color(h));
+const RC_AWN = ['#8a1e22', '#1e5a32', '#1f3a66', '#2a2a2c', '#a8742a', '#6a1f4a', '#3a6a7a'].map(h => new THREE.Color(h));
+const _sg = new THREE.Color('#ffffff'), _sk = new THREE.Color('#3a3634');
+RC._sb = new Map();
+function rcStoreBuf(cx, cz) { const k = (Math.floor(cx / 1200) + 64) * 256 + (Math.floor(cz / 1200) + 64); let b = RC._sb.get(k); if (!b) RC._sb.set(k, b = new RCBuf()); return b; }
+function rcStoreMat() {   // shop glass: dark reflective by day, warm interior glow that the night sky brings up
+  return RC.sfMat || (RC.sfMat = new THREE.MeshStandardMaterial({ color: '#20262c', roughness: 0.15, metalness: 0.6, emissive: '#ffc983', emissiveIntensity: 0.55, vertexColors: false }));
+}
 const RC_PITCH_P = { gtown: 0.72, manayunk: 0.5, ne: 0.45, west: 0.22, north: 0.06, south: 0.02, cc: 0.0 };
 // growable vertex buffer per style
 class RCBuf {
@@ -6109,11 +6118,44 @@ function* rcBuildings(t, d) {
         rcBoxE(DB, ax, az, ex, ez, nx, nz, L * 0.5 + 0.6, L - 0.2, dp - 0.24, dp - 0.16, yf + 0.8, yf + 0.9, _cp);
       }
     }
+    // v18: ground-floor shops on commercial corridors (secondary streets and up): glass shopfront, sign fascia, awning
+    if (!pitched && (s <= 2 || s === 5 || s === 9) && h >= 5.5 && A < 1400 && rcHash(b * 67 + 8) < (RC_STORE_P[reg] || 0)) {
+      if (!RG) RG = rcRoadGrid(d);
+      let best = null;
+      for (let q = 0; q < n; q++) {
+        const i = rev ? n - 1 - q : q, j = rev ? (i - 1 + n) % n : (i + 1) % n;
+        const dx = xs[j] - xs[i], dz = zs[j] - zs[i], L = Math.hypot(dx, dz); if (L < 4 || L > 40) continue;
+        const nx = -dz / L, nz = dx / L, mx = (xs[i] + xs[j]) / 2, mz = (zs[i] + zs[j]) / 2, nr = rcNearRoad(RG, mx + nx * 5, mz + nz * 5); if (!nr || nr[1][4] < 12) continue;
+        const dd = Math.hypot(nr[2] - mx, nr[3] - mz); if (dd > nr[1][4] / 2 + 6 || ((nr[2] - mx) * nx + (nr[3] - mz) * nz) < 0.6 * dd) continue;
+        const sg = nr[1], sl = Math.hypot(sg[2] - sg[0], sg[3] - sg[1]) || 1; if (Math.abs((dx * (sg[2] - sg[0]) + dz * (sg[3] - sg[1])) / (L * sl)) < 0.85) continue;
+        if (!best || dd < best[0]) best = [dd, i, L, nx, nz, dx / L, dz / L];
+      }
+      if (best) {
+        const [, i, L, nx, nz, ex, ez] = best, ax = xs[i], az = zs[i], yg = rcH(ax + ex * L / 2 + nx * 1.5, az + ez * L / 2 + nz * 1.5) + 0.05, SB = rcStoreBuf(cx, cz);
+        const bays = Math.max(1, Math.round(L / 6.5)), bw = L / bays, sc = RC_SIGN[Math.floor(rcHash(b * 71 + 2) * RC_SIGN.length) % RC_SIGN.length];
+        for (let k2 = 0; k2 < bays; k2++) {
+          const a0 = k2 * bw + 0.35, a1 = (k2 + 1) * bw - 0.35;
+          rcBoxE(SB, ax, az, ex, ez, nx, nz, a0, a1, -0.02, 0.06, yg + 0.45, yg + 3.0, _sg);   // lit glass
+          rcBoxE(DB, ax, az, ex, ez, nx, nz, a0 - 0.12, a1 + 0.12, 0, 0.14, yg, yg + 0.45, _sk);   // stallriser
+          rcBoxE(DB, ax, az, ex, ez, nx, nz, (k2 + 1) * bw - 0.35, (k2 + 1) * bw + 0.35 - (k2 === bays - 1 ? 0.35 : 0), 0, 0.2, yg, yg + 3.3, _cw);   // pier
+        }
+        rcBoxE(DB, ax, az, ex, ez, nx, nz, 0.1, L - 0.1, 0, 0.22, yg + 3.05, yg + 3.85, sc);   // sign band
+        if (rcHash(b * 73 + 5) < (reg === 'south' ? 0.7 : 0.4)) {   // awning over the shop windows
+          const aw = RC_AWN[Math.floor(rcHash(b * 79 + 1) * RC_AWN.length) % RC_AWN.length], P = (a, o, y) => [ax + ex * a + nx * o, y, az + ez * a + nz * o];
+          const Q = [P(0.25, 0.2, yg + 3.0), P(L - 0.25, 0.2, yg + 3.0), P(L - 0.25, 1.5, yg + 2.45), P(0.25, 1.5, yg + 2.45)];
+          DB.quad(...(rcNy(Q) > 0 ? Q : [Q[3], Q[2], Q[1], Q[0]]), aw);
+          const V = [P(0.25, 1.5, yg + 2.45), P(L - 0.25, 1.5, yg + 2.45), P(L - 0.25, 1.5, yg + 2.15), P(0.25, 1.5, yg + 2.15)];
+          DB.quad(...(rcOut([V[0], V[1], V[2]], cx, cz) ? V : [V[3], V[2], V[1], V[0]]), aw);
+        }
+      }
+    }
     if (rcSlice()) { yield; RC._ts = performance.now(); }   // small steps: no frame hitches while tiles stream
   }
   const out = []; RC.phase = 'bmesh';
   for (const bf of BM.values()) if (bf.nv) { const m = bf.mesh(SM[bf.s]); scene.add(m); t.meshes.push(m); out.push(m); yield; RC._ts = performance.now(); }
   for (const bf of DM.values()) if (bf.nv) { const m = bf.mesh(rcDetailMat()); scene.add(m); t.meshes.push(m); yield; }
+  for (const bf of RC._sb.values()) if (bf.nv) { const m = bf.mesh(rcStoreMat()); m.castShadow = false; scene.add(m); t.meshes.push(m); yield; }
+  RC._sb.clear();
   yield* rcStreetTrees(t, d);
 }
 const rcNy = Q => { const ux = Q[1][0] - Q[0][0], uy = Q[1][1] - Q[0][1], uz = Q[1][2] - Q[0][2], vx = Q[3][0] - Q[0][0], vy = Q[3][1] - Q[0][1], vz = Q[3][2] - Q[0][2]; return uz * vx - ux * vz; };
