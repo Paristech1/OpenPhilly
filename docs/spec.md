@@ -24,6 +24,7 @@ Philadelphia remix of mrdoob's Slop New York (MIT). Single self-contained three.
 - Custom gradient sky shader → PMREM environment per time preset.
 - Collision: spatial-hash grid of oriented boxes + solid surfaces (museum plateau/steps, bridge deck) + water blocking.
 - AI traffic on lane polylines (ring around City Hall, yields to player); sidewalk pedestrians; lamp light pools.
+- Film chain (vork-inspired): RenderPass → GTAO → GlarePass → UnrealBloom → FilmPass (white balance, glare, vignette, dispersion, AgX + look, split-tone, grain, dither, letterbox). Per-time-of-day settings in `FILMP`, looks in `LOOKS`.
 
 ## 5–6. Prototype & detailed design
 - HUD: Dark Luxury (charcoal-violet glass panels, acid-green accent), Saira Condensed / IBM Plex.
@@ -35,4 +36,5 @@ Philadelphia remix of mrdoob's Slop New York (MIT). Single self-contained three.
 - Static single file (`index.html`); originally published as a private claude.ai artifact.
 
 ## 9. Iteration ideas
+- Use vork offline (RTX/Apple Silicon) to render trailer shots of the city from exported scene JSON.
 - Real OSM footprints for Center City, SEPTA trolleys/El, audio, rain + wet roads, AFTERHOURS car port.
