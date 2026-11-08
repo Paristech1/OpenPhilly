@@ -5904,7 +5904,11 @@ class RCBuf {
 }
 const _cw = new THREE.Color(), _cr = new THREE.Color(), _cc = new THREE.Color(), _cg = new THREE.Color();
 function* rcBuildings(t, d) {
-  const SM = rcStyleMats(), B = RC_STY.map(() => new RCBuf()), DB = new RCBuf(); let RG = null; RC._ts = performance.now(); RC.phase = 'bld';
+  // buffers per (style, 1.2 km cell) so the camera and shadow frusta can cull parts of a tile
+  const SM = rcStyleMats(), BM = new Map(), DM = new Map(); let DB = null, RG = null; RC._ts = performance.now(); RC.phase = 'bld';
+  const cellK = (cx, cz) => (Math.floor(cx / 1200) + 64) * 256 + (Math.floor(cz / 1200) + 64);
+  const getB = (s, cx, cz) => { const k = s * 65536 + cellK(cx, cz); let b = BM.get(k); if (!b) BM.set(k, b = new RCBuf()); b.s = s; return b; };
+  const getD = (cx, cz) => { const k = cellK(cx, cz); let b = DM.get(k); if (!b) DM.set(k, b = new RCBuf()); return b; };
   const xs = new Float64Array(4096), zs = new Float64Array(4096);
   let p = 0, cnt = 0;
   for (let b = 0; b < d.nb; b++) {
@@ -5932,7 +5936,7 @@ function* rcBuildings(t, d) {
     if (exl === 1) continue;
     const rev = area > 0, A = Math.abs(area) / 2;
     const reg = RC_REG(cx, cz), r1 = rcHash(b * 7919 + (t.i * 131 + t.j) * 104729 + k);
-    const s = rcPickStyle(k, reg, A, h, r1), pal = RC_SPAL[s], buf = B[s];
+    const s = rcPickStyle(k, reg, A, h, r1), pal = RC_SPAL[s], buf = getB(s, cx, cz); DB = getD(cx, cz);
     const tint = 0.9 + rcHash(b * 31 + 7) * 0.2; _cw.copy(pal[Math.floor(rcHash(b * 13 + 5) * pal.length) % pal.length]).multiplyScalar(tint);
     // pitched roof? small near-rectangular houses in the outer neighbourhoods
     const rectness = A / Math.max(1, 4 * hx * hz);
@@ -6015,8 +6019,8 @@ function* rcBuildings(t, d) {
     if (rcSlice()) { yield; RC._ts = performance.now(); }   // small steps: no frame hitches while tiles stream
   }
   const out = []; RC.phase = 'bmesh';
-  for (let s = 0; s < B.length; s++) if (B[s].nv) { const m = B[s].mesh(SM[s]); scene.add(m); t.meshes.push(m); out.push(m); yield; RC._ts = performance.now(); }
-  if (DB.nv) { const m = DB.mesh(rcDetailMat()); scene.add(m); t.meshes.push(m); yield; }
+  for (const bf of BM.values()) if (bf.nv) { const m = bf.mesh(SM[bf.s]); scene.add(m); t.meshes.push(m); out.push(m); yield; RC._ts = performance.now(); }
+  for (const bf of DM.values()) if (bf.nv) { const m = bf.mesh(rcDetailMat()); scene.add(m); t.meshes.push(m); yield; }
   yield* rcStreetTrees(t, d);
 }
 const rcNy = Q => { const ux = Q[1][0] - Q[0][0], uy = Q[1][1] - Q[0][1], uz = Q[1][2] - Q[0][2], vx = Q[3][0] - Q[0][0], vy = Q[3][1] - Q[0][1], vz = Q[3][2] - Q[0][2]; return uz * vx - ux * vz; };
