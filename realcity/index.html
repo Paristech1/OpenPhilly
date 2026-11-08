@@ -6249,11 +6249,12 @@ function* rcBuildings(t, d) {
     // v18: ground-floor shops on commercial corridors (secondary streets and up): glass shopfront, sign fascia, awning
     if (!pitched && (s <= 2 || s === 5 || s === 9) && h >= 5.5 && A < 1400 && rcHash(b * 67 + 8) < (RC_STORE_P[reg] || 0)) {
       if (!RG) RG = rcRoadGrid(d);
+      const minW = (reg === 'south' || reg === 'north' || reg === 'ne') && rcHash(b * 113 + 9) < 0.1 ? 8 : 12;   // v18.12: the odd corner store on residential streets
       let best = null;
       for (let q = 0; q < n; q++) {
         const i = rev ? n - 1 - q : q, j = rev ? (i - 1 + n) % n : (i + 1) % n;
         const dx = xs[j] - xs[i], dz = zs[j] - zs[i], L = Math.hypot(dx, dz); if (L < 4 || L > 40) continue;
-        const nx = -dz / L, nz = dx / L, mx = (xs[i] + xs[j]) / 2, mz = (zs[i] + zs[j]) / 2, nr = rcNearRoad(RG, mx + nx * 5, mz + nz * 5); if (!nr || nr[1][4] < 12) continue;
+        const nx = -dz / L, nz = dx / L, mx = (xs[i] + xs[j]) / 2, mz = (zs[i] + zs[j]) / 2, nr = rcNearRoad(RG, mx + nx * 5, mz + nz * 5); if (!nr || nr[1][4] < minW) continue;
         const dd = Math.hypot(nr[2] - mx, nr[3] - mz); if (dd > nr[1][4] / 2 + 9.5 || ((nr[2] - mx) * nx + (nr[3] - mz) * nz) < 0.6 * dd) continue;
         const sg = nr[1], sl = Math.hypot(sg[2] - sg[0], sg[3] - sg[1]) || 1; if (Math.abs((dx * (sg[2] - sg[0]) + dz * (sg[3] - sg[1])) / (L * sl)) < 0.85) continue;
         if (!best || dd < best[0]) best = [dd, i, L, nx, nz, dx / L, dz / L];
