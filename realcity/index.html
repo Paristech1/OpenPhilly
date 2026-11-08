@@ -6157,6 +6157,28 @@ function* rcBuildings(t, d) {
       const cross = (xs[bq] - xs[a]) * (zs[c] - zs[a]) - (xs[c] - xs[a]) * (zs[bq] - zs[a]);
       if (cross < 0) { buf.i[buf.ni++] = r0 + a; buf.i[buf.ni++] = r0 + bq; buf.i[buf.ni++] = r0 + c; } else { buf.i[buf.ni++] = r0 + a; buf.i[buf.ni++] = r0 + c; buf.i[buf.ni++] = r0 + bq; }
     }
+    // v18.8: rooftop clutter on flat roofs — chimneys / hatches on rows, HVAC units and the odd water tank on bigger blocks
+    if (!pitched && hx > 2 && hz > 2 && rcHash(b * 83 + 6) < 0.7) {
+      const c = Math.cos(ang), sn = Math.sin(ang), ex = c, ez = -sn, nx = sn, nz = c, R = k2 => rcHash(b * 89 + k2);
+      _cg.setRGB(0.42, 0.41, 0.4).multiplyScalar(0.85 + R(1) * 0.3);
+      if (s <= 4 && A < 450) {
+        const a = (R(2) * 2 - 1) * hx * 0.7, o = (R(3) * 2 - 1) * hz * 0.6;   // chimney stack or roof hatch
+        if (R(4) < 0.55) rcBoxE(DB, ox, oz, ex, ez, nx, nz, a - 0.35, a + 0.35, o - 0.45, o + 0.45, yt, yt + 1.1 + R(5) * 0.6, RC_SPAL[0][Math.floor(R(6) * 9) % 9]);
+        else rcBoxE(DB, ox, oz, ex, ez, nx, nz, a - 0.5, a + 0.5, o - 0.5, o + 0.5, yt, yt + 0.55, _cg);
+      } else if (A >= 300) {
+        const nU = 1 + Math.floor(R(7) * Math.min(4, A / 600));
+        for (let u = 0; u < nU; u++) {
+          const a = (R(10 + u) * 2 - 1) * hx * 0.6, o = (R(20 + u) * 2 - 1) * hz * 0.6, sx = 1.2 + R(30 + u) * 1.8, sz = 1 + R(40 + u) * 1.4;
+          rcBoxE(DB, ox, oz, ex, ez, nx, nz, a - sx, a + sx, o - sz, o + sz, yt, yt + 1.1 + R(50 + u) * 0.9, _cg);
+        }
+        if ((reg === 'cc' || reg === 'north') && h > 18 && h < 60 && R(60) < 0.18) {   // timber water tank on legs
+          const a = (R(61) * 2 - 1) * hx * 0.4, o = (R(62) * 2 - 1) * hz * 0.4, tc = _cc.setRGB(0.45, 0.33, 0.24);
+          for (const [da, dob] of [[-1.3, -1.3], [1.3, -1.3], [-1.3, 1.3], [1.3, 1.3]]) rcBoxE(DB, ox, oz, ex, ez, nx, nz, a + da - 0.12, a + da + 0.12, o + dob - 0.12, o + dob + 0.12, yt, yt + 3, _cg);
+          rcBoxE(DB, ox, oz, ex, ez, nx, nz, a - 1.7, a + 1.7, o - 1.7, o + 1.7, yt + 3, yt + 6.2, tc);
+          rcBoxE(DB, ox, oz, ex, ez, nx, nz, a - 1.1, a + 1.1, o - 1.1, o + 1.1, yt + 6.2, yt + 7, _cg);
+        }
+      }
+    }
     // bracketed cornice on rowhouses (Center City / West / South / North)
     if (!pitched && s <= 2 && h >= 6.5 && A < 450 && rcHash(b * 41 + 3) < (reg === 'cc' ? 0.9 : reg === 'south' ? 0.55 : 0.7)) {
       _cc.copy(RC_CORN[Math.floor(rcHash(b * 43 + 1) * RC_CORN.length) % RC_CORN.length]);
