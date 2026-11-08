@@ -5455,7 +5455,7 @@ const BFB = Object.assign(LMF(2461.4, -36.0, 14.57), { UPA: -1010, UNJ: 1252, GP
 // Blender set 2 (Center City towers, LOVE Park, Independence Hall, 30th St): grid frames at 9.18°, u = east, v = south.
 // Each: frame, z0 (base used in Blender), exclusion box [u0,u1,v0,v1] and collider boxes [u0,u1,v0,v1,top above z0]
 // neighbourhood packs built with tools/build_area.py: [x, z, radius, glb]
-const RC_PACKS = [[-3778.0, -13731.0, 240, 'ch'], [2502.8, -1850.4, 220, 'fi'], [-18.0, 2591.0, 210, 'ep'], [-4290.7, 303.7, 220, 'wp'], [494.7, 1491.7, 200, 'bv'], [-1086.2, 1092.0, 200, 'gh'], [-915.3, -1650.5, 210, 'fm'], [323.8, 647.9, 200, 'ws'], [1904.7, -1295.2, 200, 'nl'], [1263.8, 1536.2, 200, 'qv'], [-1257.1, 1813.7, 200, 'pb'], [-1710.0, -2461.1, 200, 'bt'], [2801.9, -2960.7, 200, 'ek'], [-5188.0, -8123.8, 220, 'my'], [1691.0, 203.7, 200, 'oc']];
+const RC_PACKS = [[-3778.0, -13731.0, 240, 'ch'], [2502.8, -1850.4, 220, 'fi'], [-18.0, 2591.0, 210, 'ep'], [-4290.7, 303.7, 220, 'wp'], [494.7, 1491.7, 200, 'bv'], [-1086.2, 1092.0, 200, 'gh'], [-915.3, -1650.5, 210, 'fm'], [323.8, 647.9, 200, 'ws'], [1904.7, -1295.2, 200, 'nl'], [1263.8, 1536.2, 200, 'qv'], [-1257.1, 1813.7, 200, 'pb'], [-1710.0, -2461.1, 200, 'bt'], [2801.9, -2960.7, 200, 'ek'], [-5188.0, -8123.8, 220, 'my'], [1691.0, 203.7, 200, 'oc'], [-4718.0, -9012.0, 210, 'rx'], [-18.0, -8623.4, 200, 'wi'], [-3179.8, -73.8, 210, 'uc'], [4938.3, -3626.9, 210, 'pr'], [-1641.6, -4515.2, 210, 'sm'], [-7110.7, -3626.9, 210, 'ob']];
 const LM2 = [
   { n: 'One Liberty Place', F: LMF(-371.47, -26.07, 9.18), z0: 11.97, ex: [-31, 31, -31, 31], cols: [[-30.5, 30.5, -30.8, 30.8, 9], [-28.5, 28.5, -28.5, 28.5, 236], [-22.5, 22.5, -22.5, 22.5, 262], [-9, 9, -9, 9, 276]] },
   { n: 'Two Liberty Place', F: LMF(-312.63, 72.28, 9.18), z0: 12.36, ex: [-25, 25, -27, 27], cols: [[-23.7, 23.7, -25.4, 25.4, 9], [-22.5, 22.5, -20, 20, 210], [-12.5, 12.5, -10.5, 10.5, 240]] },
@@ -5547,13 +5547,15 @@ async function rcLandmarkModels() {
         if (k) { if (m.emissiveMap) m.emissive.setRGB(1, 1, 1); m.emissiveIntensity = lampLevel * k; if (!GLOW.some(g => g.m === m)) GLOW.push({ m, k }); }
         if (m.map) { m.map.anisotropy = 4; } });
       if (f === 'lp') g.scene.position.y = 1.6;   // plaza level with the surrounding streets
+      if (RC.bootDone) { g.scene.traverse(o => { if (o.isMesh) { o.visible = false; RC.revealQ.push(o); } }); }   // streamed in: reveal a few meshes per frame so GPU uploads don't land in one frame
       scene.add(g.scene); (window.__lm = window.__lm || []).push(f); return g.scene;
     } catch (e) { console.warn('landmark model unavailable: ' + f, e); (window.__lm = window.__lm || []).push('ERR ' + f + ' ' + (e && e.message)); return null; }
   };
   RC.loadModel = load;
   await Promise.all(FILES.map(load));
+  RC.bootDone = true;
 }
-// neighbourhood packs: [x, z, r, file]; loaded within r + 1.6 km of the camera, released beyond r + 4 km
+// neighbourhood packs: [x, z, r, file]; loaded within r + 2.2 km of the camera, released beyond r + 4 km
 const RC_NB = [[-227.4, -8196, 190, 'fa'], [-829.8, -9145.4, 210, 'ga'], [1434.6, 814.5, 170, 'sh'], [-1778.4, -10510.9, 230, 'ma'], [-1171.6, 525.8, 200, 'rf'], [-1684.4, -9622.8, 220, 'gt'], ...RC_PACKS];
 const RC_NBS = {};
 function rcPackStream() {
@@ -5561,7 +5563,7 @@ function rcPackStream() {
   const cx = camera.position.x, cz = camera.position.z;
   for (const [x, z, r, f] of RC_NB) {
     const d = Math.hypot(x - cx, z - cz), st = RC_NBS[f];
-    if (d < r + 1600 && !st) { RC_NBS[f] = { busy: true }; RC.loadModel(f).then(o => { RC_NBS[f] = { obj: o }; }); }
+    if (d < r + 2200 && !st) { RC_NBS[f] = { busy: true }; RC.loadModel(f).then(o => { RC_NBS[f] = { obj: o }; }); }
     else if (d > r + 4000 && st && st.obj) {
       scene.remove(st.obj);
       st.obj.traverse(o => { if (o.isMesh) { o.geometry.dispose(); for (const k of ['map', 'emissiveMap']) if (o.material[k]) o.material[k].dispose(); const gi = GLOW.findIndex(g => g.m === o.material); if (gi >= 0) GLOW.splice(gi, 1); o.material.dispose(); } });
@@ -5614,7 +5616,13 @@ SCENIC.push(
   { name: 'Old City', pos: [1810, 55, 320], look: [1691, 8, 203.7], fov: 50 },
   { name: 'FMC Tower over the Schuylkill', pos: [-1420, 60, 160], look: [-1686, 120, 31.6], fov: 50 },
   { name: 'Cathedral Basilica on Logan Square', pos: [-500, 6, -590], look: [-410, 26, -560], fov: 55 },
-  { name: 'Wanamaker Building at 13th & Market', pos: [40, 30, 20], look: [140, 40, 104], fov: 55 }
+  { name: 'Wanamaker Building at 13th & Market', pos: [300, 150, 290], look: [140, 45, 104], fov: 55 },
+  { name: 'Roxborough (Ridge Ave)', pos: [-4590, 70, -8890], look: [-4718, 15, -9012], fov: 50 },
+  { name: 'Germantown (Wister)', pos: [110, 65, -8500], look: [-18, 12, -8623.4], fov: 50 },
+  { name: 'University City (Walnut St)', pos: [-3050, 70, 50], look: [-3179.8, 15, -73.8], fov: 50 },
+  { name: 'Port Richmond', pos: [5060, 55, -3505], look: [4938.3, 8, -3626.9], fov: 50 },
+  { name: 'Strawberry Mansion', pos: [-1520, 60, -4395], look: [-1641.6, 10, -4515.2], fov: 50 },
+  { name: 'Overbrook', pos: [-6990, 60, -3505], look: [-7110.7, 12, -3626.9], fov: 50 }
 );
 // solids: museum terrace + the 72 steps, the bridge deck
 function rcKitSolid(x, z) {
@@ -6219,7 +6227,9 @@ function rcPRReset(l) {
   RC.prMax = l === 'low' ? 1 : Math.min(devicePixelRatio || 1, isTouch ? 1.25 : 1.5); RC.prMin = Math.min(1, RC.prMax);
   RC.pr = RC.prMax; _drAcc = _drN = 0; _drGood = 0; return RC.pr;
 }
+RC.revealQ = [];
 function rcDynRes() {
+  if (RC.revealQ.length) for (let k = 0; k < 3 && RC.revealQ.length; k++) { const o = RC.revealQ.shift(); if (o.parent) o.visible = true; }
   const now = performance.now(), dt = _drLast ? now - _drLast : 16.7; _drLast = now;
   if (dt > 250) return;                       // tab was hidden / a load stall: ignore
   _drAcc += dt; _drN++; _drT += dt;
