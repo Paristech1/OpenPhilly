@@ -6203,7 +6203,8 @@ window.__stepStats = {};
 // ---- tree LOD (Nov 8, from a real-GPU profile: 25k street trees x 112 tris, all casting shadows, cost ~40% of a frame on an M4)
 RC.treeChunks = [];
 let _tlodF = 0;
-function rcTreeLOD() {
+function rcTreeLOD() {   // runs every frame, scenic shots included
+  if (RC.revealQ && RC.revealQ.length) for (let k = 0; k < 3 && RC.revealQ.length; k++) { const o = RC.revealQ.shift(); if (o.parent) o.visible = true; }
   if ((_tlodF++ & 7) !== 0) return;
   if ((_tlodF & 31) === 1) rcPackStream();
   const cx = camera.position.x, cz = camera.position.z, L = RC.treeChunks; let w = 0;
@@ -6229,7 +6230,6 @@ function rcPRReset(l) {
 }
 RC.revealQ = [];
 function rcDynRes() {
-  if (RC.revealQ.length) for (let k = 0; k < 3 && RC.revealQ.length; k++) { const o = RC.revealQ.shift(); if (o.parent) o.visible = true; }
   const now = performance.now(), dt = _drLast ? now - _drLast : 16.7; _drLast = now;
   if (dt > 250) return;                       // tab was hidden / a load stall: ignore
   _drAcc += dt; _drN++; _drT += dt;
@@ -6342,7 +6342,7 @@ function frame(now) {
   for (const a of ANIM) a(t, dt);
   if (ciraMat) { if (lampLevel > 0) { ciraMat.emissive.setHSL((t * 0.03) % 1, 0.85, 0.5); ciraMat.emissiveIntensity = lampLevel * 0.55; } else ciraMat.emissiveIntensity = 0; }
   const ld = sun.userData.dir || sunDir;
-  const sc = SHOT ? SHOT.look : P.pos; rcSunSnap(sc, ld); rcNearPlane(); rcTreeLOD();
+  const sc = SHOT ? SHOT.look : P.pos; rcSunSnap(sc, ld); rcNearPlane(); rcTreeLOD(); rcDynRes();
   sky.position.copy(camera.position); skyU.uTime.value = t % 10000; FOL.time.value = t % 1000;
   if (REAL.on && REAL.tiles) { camera.updateMatrixWorld(); REAL.tiles.update(); realGround(); }
   if (filmPass) filmPass.uniforms.uTime.value = t % 100;
@@ -6364,7 +6364,6 @@ function frame(now) {
   // auto quality: drop a level if we stay under ~28 fps
   fpsAcc += dt; fpsN++; fpsT += dt;
   if (fpsT > 3 && !SHOT) { const avg = fpsAcc / fpsN; if (avg > 1 / 26 && RC.pr <= RC.prMin + 1e-3 && quality.level !== 'low') setQuality(quality.level === 'high' ? 'medium' : 'low'); fpsAcc = fpsN = fpsT = 0; }
-  rcDynRes();
   requestAnimationFrame(frame);
 }
 boot();
