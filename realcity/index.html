@@ -5968,17 +5968,17 @@ const rcOut = (T, ox, oz) => {
 
 // ---------------------------------------------------------------- trees: species + street trees
 const RC_TREE = { geo: null };
-function rcConeGeo() {
+function rcConeGeo(lo) {
   // evergreen: three stacked tiers (pine / spruce in the Wissahickon and Fairmount Park)
   const pts = [[0.02, 2.05], [0.38, 1.55], [0.18, 1.55], [0.66, 0.95], [0.30, 0.95], [0.95, 0.25], [0.12, 0.18], [0.0, 0.18]].map(([r, y]) => new THREE.Vector2(r, y - 1.0));
-  const g = new THREE.LatheGeometry(pts, 9).toNonIndexed(); g.computeVertexNormals();
+  const g = new THREE.LatheGeometry(lo ? [pts[0], pts[3], pts[5], pts[7]] : pts, lo ? 5 : 9).toNonIndexed(); g.computeVertexNormals();
   const p = g.attributes.position, ao = []; for (let i = 0; i < p.count; i++) { const y = p.getY(i), r = Math.hypot(p.getX(i), p.getZ(i)); ao.push(Math.max(0.25, Math.min(1, 0.35 + 0.45 * (y + 1) / 2 + 0.4 * r))); }
   g.userData.ex = ao; return mergeNI([g], 'aAO');
 }
-function rcLowCanopy(seed) {
+function rcLowCanopy(seed, lo) {
   // ~100-triangle canopy (5 displaced icosahedron lobes) — thousands of street trees must stay cheap
   const R = mulberry32(seed), r = (a, b) => a + (b - a) * R(), geos = [];
-  const lobes = [[0, 0.05, 0, 0.66]]; for (let i = 0; i < 4; i++) { const a = r(0, 6.28), yy = r(-0.2, 0.7), rad = Math.sqrt(1 - yy * yy), dd = r(0.38, 0.52); lobes.push([Math.cos(a) * rad * dd, yy * dd * 0.9, Math.sin(a) * rad * dd, r(0.4, 0.55)]); }
+  const lobes = [[0, 0.05, 0, lo ? 0.92 : 0.66]]; for (let i = 0; i < (lo ? 0 : 4); i++) { const a = r(0, 6.28), yy = r(-0.2, 0.7), rad = Math.sqrt(1 - yy * yy), dd = r(0.38, 0.52); lobes.push([Math.cos(a) * rad * dd, yy * dd * 0.9, Math.sin(a) * rad * dd, r(0.4, 0.55)]); }
   for (const [lx, ly, lz, lr] of lobes) {
     const g = new THREE.IcosahedronGeometry(1, 0), p = g.attributes.position, n = g.attributes.normal, ao = [];
     for (let i = 0; i < p.count; i++) {
@@ -5996,7 +5996,8 @@ function rcTreeGeos() {
   if (RC_TREE.geo) return RC_TREE.geo;
   if (!CANOPY) { CANOPY = [canopyGeo(11), canopyGeo(23), canopyGeo(37)]; TRUNK = trunkGeo(); }
   const tg = new THREE.CylinderGeometry(0.05, 0.085, 1, 6, 1, true).translate(0, 0.5, 0);
-  return (RC_TREE.geo = { canopy: [rcLowCanopy(11), rcLowCanopy(23), rcLowCanopy(37)], cone: rcConeGeo(), trunk: tg });
+  return (RC_TREE.geo = { canopy: [rcLowCanopy(11), rcLowCanopy(23), rcLowCanopy(37)], cone: rcConeGeo(), trunk: tg,
+    canopyLo: rcLowCanopy(11, true), coneLo: rcConeGeo(true) });
 }
 // November palettes: oaks/maples turning, plane trees still olive, ginkgo gold, a few nearly bare
 const RC_TPAL = {
@@ -6020,6 +6021,18 @@ const RC_STREET_P = { cc: 0.55, west: 0.55, gtown: 0.6, manayunk: 0.45, north: 0
 const _dm = new THREE.Object3D(), _tc = new THREE.Color();
 function rcTreeMeshes(list, seed, keep) { const out = []; for (const m of rcTreeMeshesG(list, seed, out)) {} return out; }
 function* rcTreeMeshesG(list, seed, out) {
+  // split into 600 m cells: tight bounds let the camera and the shadow camera cull, and each cell can switch LOD on its own
+  const cells = new Map();
+  for (const t of list) { const k = Math.floor(t.x / 600) + "," + Math.floor(t.z / 600); let a = cells.get(k); if (!a) cells.set(k, a = []); a.push(t); }
+  let ci = 0;
+  for (const L of cells.values()) {
+    let cx = 0, cz = 0; for (const t of L) { cx += t.x; cz += t.z; } cx /= L.length; cz /= L.length;
+    const before = out.length;
+    yield* rcTreeCell(L, seed + 7919 * ci++, out);
+    for (let i = before; i < out.length; i++) RC.treeChunks.push({ m: out[i], x: cx, z: cz, lod: 0 });
+  }
+}
+function* rcTreeCell(list, seed, out) {
   // list: [{x, z, y, sp, sc}] -> trunk mesh + canopy meshes per geometry; returns meshes
   const G = rcTreeGeos(), R = mulberry32(seed);
   const byGeo = { c0: [], c1: [], c2: [], cone: [] }, trunks = [];
@@ -6036,7 +6049,7 @@ function* rcTreeMeshesG(list, seed, out) {
   if (trunks.length) {
     const tm = new THREE.InstancedMesh(G.trunk, barkMat(), trunks.length);
     trunks.forEach(([x, y, z, r, h, ry], i) => { _dm.position.set(x, y - 0.1, z); _dm.rotation.set(0, ry, 0); _dm.scale.set(r, h, r); _dm.updateMatrix(); tm.setMatrixAt(i, _dm.matrix); });
-    tm.castShadow = tm.receiveShadow = true; tm.computeBoundingSphere(); tm.userData.keepGeo = true; out.push(tm); yield tm;
+    tm.castShadow = tm.receiveShadow = true; tm.computeBoundingSphere(); tm.userData.keepGeo = true; tm.userData.trunk = true; out.push(tm); yield tm;
   }
   for (const [key, L] of Object.entries(byGeo)) {
     if (!L.length) continue;
@@ -6046,7 +6059,7 @@ function* rcTreeMeshesG(list, seed, out) {
       _dm.position.set(x, y, z); _dm.rotation.set(0, ry, 0); _dm.scale.set(sx, sy, sz); _dm.updateMatrix(); im.setMatrixAt(i, _dm.matrix);
       _tc.set(c); _tc.offsetHSL((R() - 0.5) * 0.04, (R() - 0.5) * 0.1, (R() - 0.5) * 0.1); im.setColorAt(i, _tc);
     });
-    im.castShadow = im.receiveShadow = true; im.computeBoundingSphere(); im.userData.keepGeo = true; out.push(im); yield im;
+    im.castShadow = im.receiveShadow = true; im.computeBoundingSphere(); im.userData.keepGeo = true; im.userData.hi = geo; im.userData.lo = key === 'cone' ? G.coneLo : G.canopyLo; out.push(im); yield im;
   }
 }
 function* rcStreetTrees(t, d) {
@@ -6148,6 +6161,24 @@ window.__stepStats = {};
   }
 }; }
 
+// ---- tree LOD (Nov 8, from a real-GPU profile: 25k street trees x 112 tris, all casting shadows, cost ~40% of a frame on an M4)
+RC.treeChunks = [];
+let _tlodF = 0;
+function rcTreeLOD() {
+  if ((_tlodF++ & 7) !== 0) return;
+  const cx = camera.position.x, cz = camera.position.z, L = RC.treeChunks; let w = 0;
+  for (let i = 0; i < L.length; i++) {
+    const c = L[i], m = c.m; if (!m.parent) continue; L[w++] = c;
+    const d = Math.hypot(c.x - cx, c.z - cz), near = d < 380, far = d > 2600;
+    m.visible = !far && (near || !m.userData.trunk);
+    m.castShadow = near;
+    const lod = near ? 0 : 1;
+    if (lod !== c.lod && m.userData.hi) { m.geometry = lod ? m.userData.lo : m.userData.hi; c.lod = lod; }
+  }
+  L.length = w;
+}
+window.__gfx = () => ({ renderer, composer, aoPass, bloomPass, sun, scene, camera });
+
 // ---------------------------------------------------------------- boot
 const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
 async function boot() {
@@ -6242,7 +6273,7 @@ function frame(now) {
   for (const a of ANIM) a(t, dt);
   if (ciraMat) { if (lampLevel > 0) { ciraMat.emissive.setHSL((t * 0.03) % 1, 0.85, 0.5); ciraMat.emissiveIntensity = lampLevel * 0.55; } else ciraMat.emissiveIntensity = 0; }
   const ld = sun.userData.dir || sunDir;
-  const sc = SHOT ? SHOT.look : P.pos; rcSunSnap(sc, ld); rcNearPlane();
+  const sc = SHOT ? SHOT.look : P.pos; rcSunSnap(sc, ld); rcNearPlane(); rcTreeLOD();
   sky.position.copy(camera.position); skyU.uTime.value = t % 10000; FOL.time.value = t % 1000;
   if (REAL.on && REAL.tiles) { camera.updateMatrixWorld(); REAL.tiles.update(); realGround(); }
   if (filmPass) filmPass.uniforms.uTime.value = t % 100;
