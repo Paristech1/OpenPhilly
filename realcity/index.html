@@ -5795,16 +5795,20 @@ const RC_TRENCH = [[919.2,-503.8,944.1,-511.1,959.2,-515.7,970.7,-519.4],[716.5,
 const RC_TR_HW = 8.5;   // half-width of the cut around each carriageway centreline (13 m strip + shoulders)
 // v18.3: I-95 along Penn's Landing (covered from ~Chestnut St to ~South St, open cuts at each end) uses the same machinery
 const RC_TR95 = [[1849.4, 294.5, 1852.7, 296.3, 1855.2, 297.8, 1857.4, 299.3, 1859.2, 301.0, 1860.9, 302.5, 1862.4, 304.5, 1863.4, 306.8, 1864.2, 309.8, 1864.4, 312.8, 1863.9, 317.0, 1863.4, 322.5, 1843.9, 458.8], [1759.7, 1067.8, 1762.9, 1093.8, 1746.9, 1272.0, 1745.2, 1288.8, 1736.4, 1368.0], [1902.4, 347.3, 1909.4, 265.5, 1922.4, 181.5, 1924.4, 169.0, 1926.2, 156.8, 1927.7, 144.8, 1929.2, 132.8, 1929.9, 120.3, 1930.4, 108.8, 1930.9, 97.0, 1931.2, 84.0, 1931.2, 69.8, 1931.2, 58.0, 1931.2, -63.0], [1899.2, -139.7, 1905.4, -39.5, 1906.9, -15.5, 1907.7, 8.3, 1907.9, 33.3, 1907.4, 57.0, 1905.9, 81.0, 1903.7, 106.0, 1900.9, 129.8, 1864.4, 408.3, 1859.7, 449.3], [1807.4, 776.5, 1772.7, 989.8], [1794.7, 993.3, 1828.9, 779.8], [1828.9, 779.8, 1850.2, 649.8], [1772.7, 989.8, 1759.7, 1067.8], [1850.2, 649.8, 1880.9, 464.5], [1902.4, 347.3, 1919.7, 263.8, 1930.4, 208.0, 1932.4, 196.3, 1934.4, 184.3, 1936.7, 172.0, 1938.2, 160.5, 1939.9, 148.0, 1940.9, 136.3, 1942.2, 123.8, 1943.2, 111.3, 1944.2, 99.3, 1944.7, 87.8, 1944.9, 75.3, 1944.9, 63.3, 1944.9, 38.8], [1828.7, 646.0, 1807.4, 776.5], [1857.7, 461.0, 1828.7, 646.0], [1792.7, 774.3, 1758.2, 987.5], [1843.9, 458.8, 1813.9, 643.5], [1813.9, 643.5, 1792.7, 774.3], [1859.7, 449.3, 1857.7, 461.0], [1880.9, 464.5, 1902.4, 347.3], [1916.4, 123.8, 1874.9, 389.8], [1788.9, 1031.8, 1794.7, 993.3], [1874.9, 389.8, 1872.7, 400.8, 1862.2, 438.3, 1859.7, 449.3], [1850.2, 1193.0, 1839.9, 1192.8, 1830.2, 1192.5]];
-const rcTrKeys = rcKeySet([...RC_TRENCH, ...RC_TR95].map(P => [P[0], P[1], P[P.length - 2], P[P.length - 1]]));
+const RC_T76 = [[-1608.2, 89.0, -1603.7, 82.0, -1600.7, 77.3, -1585.0, 55.3], [-1422.7, -505.5, -1434.7, -449.2, -1439.5, -425.7, -1442.0, -414.0, -1445.2, -401.0, -1448.5, -388.5, -1489.0, -245.5, -1492.5, -234.5, -1496.5, -222.7, -1537.0, -114.0, -1609.7, 71.0, -1617.5, 86.0], [-1608.2, 89.0, -1605.7, 84.0, -1601.7, 74.3, -1528.7, -111.0, -1488.5, -220.0, -1484.2, -231.7, -1480.7, -243.2, -1440.2, -386.2, -1436.7, -399.0, -1433.5, -412.0, -1431.0, -423.7, -1426.2, -447.5], [-1585.0, 55.3, -1580.2, 47.3], [-1617.5, 86.0, -1626.2, 108.0, -1635.5, 129.8, -1646.2, 153.5, -1653.0, 167.3, -1662.0, 184.0, -1669.5, 197.0, -1678.7, 212.3, -1688.7, 227.8, -1700.0, 243.3, -1712.0, 259.3, -1725.5, 275.3, -1739.0, 290.5, -1752.7, 303.8, -1764.5, 314.8, -1779.2, 328.0, -1794.5, 340.5, -1813.0, 354.0], [-1400.5, -504.5, -1398.5, -510.2, -1397.0, -516.0, -1395.2, -523.5, -1393.5, -533.0, -1392.0, -541.5, -1390.7, -551.2, -1389.2, -560.5, -1388.5, -570.2, -1387.7, -580.7, -1387.2, -592.7, -1387.0, -603.0, -1386.7, -612.7, -1387.0, -625.2, -1387.2, -635.7, -1387.7, -646.0, -1388.7, -657.0, -1389.7, -668.5, -1391.2, -679.7, -1393.0, -689.2, -1394.7, -698.0, -1397.0, -706.5, -1399.7, -715.7, -1402.7, -724.2, -1405.7, -733.2, -1411.0, -745.7], [-1414.2, -503.7, -1411.5, -516.7, -1409.5, -528.7, -1407.5, -540.7, -1405.5, -553.0, -1404.0, -565.2, -1402.7, -577.5, -1402.2, -589.5, -1402.0, -601.7, -1402.2, -613.7, -1402.7, -626.0, -1403.5, -638.5, -1404.7, -650.5, -1406.2, -662.7, -1408.0, -674.0, -1410.5, -686.0, -1413.5, -697.5, -1417.7, -712.2, -1425.5, -733.5, -1434.2, -754.7, -1445.0, -779.5], [-1426.2, -447.5, -1423.0, -456.2, -1420.2, -463.5, -1417.5, -470.2, -1400.5, -504.5], [-1426.2, -447.5, -1414.2, -503.7]];   // v18.6: covered motorway on the east bank of the Schuylkill (OSM tunnel, ~Market St to the Vine St junction) + its approaches
+const rcTrKeys = rcKeySet([...RC_TRENCH, ...RC_TR95, ...RC_T76].map(P => [P[0], P[1], P[P.length - 2], P[P.length - 1]]));
 const rcIsTrench = (P0, n0) => rcWayIn(rcTrKeys, P0, n0);
 const rcClamp01 = v => Math.min(1, Math.max(0, v));
+const RC_T76A = [-1426, -447], RC_T76U = (() => { const dx = -1608 + 1426, dz = 89 + 447, l = Math.hypot(dx, dz); return [dx / l, dz / l, l]; })();
+function rcT76(x, z) { const dx = x - RC_T76A[0], dz = z - RC_T76A[1], sp = dx * RC_T76U[0] + dz * RC_T76U[1], pp = Math.abs(-dx * RC_T76U[1] + dz * RC_T76U[0]); return [sp, pp]; }
 function rcTrenchD(x, z) {
+  if (x < -1250 && x > -1900) { const [sp, pp] = rcT76(x, z); if (pp < 75 && sp > -140 && sp < RC_T76U[2] + 140) return 7 * rcClamp01((sp + 140) / 140) * rcClamp01((RC_T76U[2] - sp + 140) / 140); }
   if (z < -300) return 6.8 * rcClamp01((x + 1190) / 150) * rcClamp01((980 - x) / 150);   // Vine St (I-676)
   if (x > 1500) return 7 * rcClamp01((z - 200) / 150) * rcClamp01((1250 - z) / 160);      // I-95 at Penn's Landing
   return 0;
 }
-const rcTrenchCov = (x, z) => x > 1500 && z > 347 && z < 1068;   // OSM tunnel: roofed over (cap park / Columbus Blvd above)
-const rcTrenchEW = (x, z) => z < -300;                             // Vine St runs east-west, I-95 north-south
+const rcTrenchCov = (x, z) => (x > 1500 && z > 347 && z < 1068) || (x < -1250 && x > -1900 && (([sp, pp]) => pp < 45 && sp > 0 && sp < RC_T76U[2])(rcT76(x, z)));   // OSM tunnel: roofed over (cap park / Columbus Blvd above)
+const rcTrenchEW = (x, z) => z < -300 && x > -1250;                             // Vine St runs east-west, I-95 north-south
 function rcBuildTrMask(LINES) {
   let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
   for (const P of LINES) for (let i = 0; i < P.length; i += 2) { x0 = Math.min(x0, P[i]); x1 = Math.max(x1, P[i]); z0 = Math.min(z0, P[i + 1]); z1 = Math.max(z1, P[i + 1]); }
@@ -5829,7 +5833,7 @@ function rcBuildTrMask(LINES) {
   const tex = new THREE.CanvasTexture(cv); tex.flipY = false; tex.minFilter = tex.magFilter = THREE.NearestFilter; tex.generateMipmaps = false;
   return { x0, z0, S, W, H, D, tex, size: [x1 - x0, z1 - z0] };
 }
-const RC_TRMS = [rcBuildTrMask(RC_TRENCH), rcBuildTrMask(RC_TR95)];
+const RC_TRMS = [rcBuildTrMask(RC_TRENCH), rcBuildTrMask(RC_TR95), rcBuildTrMask(RC_T76)];
 function rcTrMaskV(x, z) {
   for (const M of RC_TRMS) { const i = Math.floor((x - M.x0) / M.S), j = Math.floor((z - M.z0) / M.S); if (i >= 0 && j >= 0 && i < M.W && j < M.H) { const v = M.D[4 * (j * M.W + i)]; if (v) return v; } }
   return 0;
@@ -5837,12 +5841,13 @@ function rcTrMaskV(x, z) {
 const rcTrenchAt = (x, z) => rcTrMaskV(x, z) > 100;
 function rcTerrainCut(m) {   // terrain fragments over open cuts are discarded so the lowered expressway shows through (roofed parts keep the ground)
   m.onBeforeCompile = sh => {
-    const M0 = RC_TRMS[0], M1 = RC_TRMS[1];
+    const M0 = RC_TRMS[0], M1 = RC_TRMS[1], M2 = RC_TRMS[2];
+    sh.uniforms.uTrM2 = { value: M2.tex }; sh.uniforms.uTrA2 = { value: new THREE.Vector2(M2.x0, M2.z0) }; sh.uniforms.uTrS2 = { value: new THREE.Vector2(...M2.size) };
     sh.uniforms.uTrM0 = { value: M0.tex }; sh.uniforms.uTrA0 = { value: new THREE.Vector2(M0.x0, M0.z0) }; sh.uniforms.uTrS0 = { value: new THREE.Vector2(...M0.size) };
     sh.uniforms.uTrM1 = { value: M1.tex }; sh.uniforms.uTrA1 = { value: new THREE.Vector2(M1.x0, M1.z0) }; sh.uniforms.uTrS1 = { value: new THREE.Vector2(...M1.size) };
     sh.vertexShader = 'varying vec3 vTrW;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n  vTrW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-    sh.fragmentShader = 'varying vec3 vTrW;\nuniform sampler2D uTrM0, uTrM1; uniform vec2 uTrA0, uTrS0, uTrA1, uTrS1;\n' + sh.fragmentShader.replace('#include <clipping_planes_fragment>',
-      '#include <clipping_planes_fragment>\n  { vec2 a = (vTrW.xz - uTrA0) / uTrS0; if (a.x > 0.0 && a.x < 1.0 && a.y > 0.0 && a.y < 1.0 && texture2D(uTrM0, a).r > 0.75) discard;\n    vec2 b = (vTrW.xz - uTrA1) / uTrS1; if (b.x > 0.0 && b.x < 1.0 && b.y > 0.0 && b.y < 1.0 && texture2D(uTrM1, b).r > 0.75) discard;\n    vec2 pd = vTrW.xz - vec2(-1470.3, -1475.9); float pu = dot(pd, vec2(0.71203, 0.70215)), pv = dot(pd, vec2(-0.70215, 0.71203)); if (pu > 69.0 && pu < 117.5 && abs(pv) < 33.0) discard; }');   // the 30 m terrain grid can't follow the 72 steps: let the Art Museum stair model show
+    sh.fragmentShader = 'varying vec3 vTrW;\nuniform sampler2D uTrM0, uTrM1, uTrM2; uniform vec2 uTrA0, uTrS0, uTrA1, uTrS1, uTrA2, uTrS2;\n' + sh.fragmentShader.replace('#include <clipping_planes_fragment>',
+      '#include <clipping_planes_fragment>\n  { vec2 a = (vTrW.xz - uTrA0) / uTrS0; if (a.x > 0.0 && a.x < 1.0 && a.y > 0.0 && a.y < 1.0 && texture2D(uTrM0, a).r > 0.75) discard;\n    vec2 b = (vTrW.xz - uTrA1) / uTrS1; if (b.x > 0.0 && b.x < 1.0 && b.y > 0.0 && b.y < 1.0 && texture2D(uTrM1, b).r > 0.75) discard;\n    vec2 c2 = (vTrW.xz - uTrA2) / uTrS2; if (c2.x > 0.0 && c2.x < 1.0 && c2.y > 0.0 && c2.y < 1.0 && texture2D(uTrM2, c2).r > 0.75) discard;\n    vec2 pd = vTrW.xz - vec2(-1470.3, -1475.9); float pu = dot(pd, vec2(0.71203, 0.70215)), pv = dot(pd, vec2(-0.70215, 0.71203)); if (pu > 69.0 && pu < 117.5 && abs(pv) < 33.0) discard; }');   // the 30 m terrain grid can't follow the 72 steps: let the Art Museum stair model show
   };
   m.needsUpdate = true;
 }
@@ -6097,7 +6102,7 @@ function* rcBuildings(t, d) {
     const exl = RC.excl && RC.excl.length ? rcExclusion(cx, cz) : 0; if (exl === 2) continue;
     if (RC.meta.fitlerBox && cx > RC.meta.fitlerBox[0] && cx < RC.meta.fitlerBox[2] && cz > RC.meta.fitlerBox[1] && cz < RC.meta.fitlerBox[3] && h > 20) continue;
     const [ox, oz, hx, hz, ang] = rcObb(xs, zs, n);
-    if (hx > 0.6 && hz > 0.6) rcAddCol(t.cols, ox, oz, hx, hz, ang, yt, y0 - 20);
+    if (hx > 0.6 && hz > 0.6) rcAddCol(t.cols, ox, oz, hx, hz, ang, yt, rcTrMaskV(cx, cz) === 140 ? y0 - 0.2 : y0 - 20);   // over a roofed motorway the collider stops at street level so the tunnel below stays drivable
     if (exl === 1) continue;
     const rev = area > 0, A = Math.abs(area) / 2;
     const reg = RC_REG(cx, cz), r1 = rcHash(b * 7919 + (t.i * 131 + t.j) * 104729 + k);
