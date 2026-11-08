@@ -5064,16 +5064,24 @@ function rcTrees(l) {
 }
 
 // ---------- tile streaming
+// stream around what the camera shows: a scenic shot or photo shot can be kilometres from the player
+function rcStreamC() {
+  if (typeof SHOT !== 'undefined' && SHOT) return [SHOT.look.x, SHOT.look.z, false];
+  if (camMode === 'scenic' && SCENIC[scenicIdx]) return [SCENIC[scenicIdx].look[0], SCENIC[scenicIdx].look[2], false];
+  return [P.pos.x, P.pos.z, P.mode === 'fly'];
+}
 function rcWant() {
-  const R = RC_RADIUS[P.mode] + (P.mode === 'fly' ? Math.min(2500, Math.max(0, P.pos.y) * 4) : 0);
+  const [cx, cz, fly] = rcStreamC();
+  const R = (fly ? RC_RADIUS.fly : RC_RADIUS[P.mode === 'fly' ? 'drive' : P.mode]) + (fly ? Math.min(2500, Math.max(0, P.pos.y) * 4) : 0);
   const out = [];
-  for (const T of RC.meta.tiles) { const tx = T.ox, tz = -T.oy, d = Math.hypot(tx - P.pos.x, tz - P.pos.z); if (d < R) out.push([d, T]); }
+  for (const T of RC.meta.tiles) { const tx = T.ox, tz = -T.oy, d = Math.hypot(tx - cx, tz - cz); if (d < R) out.push([d, T]); }
   out.sort((a, b) => a[0] - b[0]);
   return [out, R];
 }
 function rcUpdateTiles() {
   const [want, R] = rcWant(); const keep = new Set(want.map(w => w[1].f));
-  for (const [k, t] of RC.tiles) if (!keep.has(k) && Math.hypot(t.ox - P.pos.x, -t.oy - P.pos.z) > R + 1500) rcDrop(k, t);
+  const [scx, scz] = rcStreamC();
+  for (const [k, t] of RC.tiles) if (!keep.has(k) && Math.hypot(t.ox - scx, -t.oy - scz) > R + 1500 && Math.hypot(t.ox - P.pos.x, -t.oy - P.pos.z) > 2200) rcDrop(k, t);   // never drop the tiles the player is standing in
   for (const [, T] of want) if (!RC.tiles.has(T.f)) {
     const t = { ...T, built: false, cols: [], meshes: [], roads: [] }; RC.tiles.set(T.f, t);
     rcPack(T.p).then(pk => { if (RC.tiles.get(T.f) === t) RC.queue.push([t, rcParse(pk.slice(T.o, T.o + T.l))]); }).catch(() => RC.tiles.delete(T.f));
@@ -5090,7 +5098,7 @@ function rcPump(budget) {
   while (performance.now() - t0 < budget) {
     if (!RC.job) {
       if (!RC.queue.length) return;
-      RC.queue.sort((a, b) => Math.hypot(a[0].ox - P.pos.x, -a[0].oy - P.pos.z) - Math.hypot(b[0].ox - P.pos.x, -b[0].oy - P.pos.z));
+      const [qx, qz] = rcStreamC(); RC.queue.sort((a, b) => Math.hypot(a[0].ox - qx, -a[0].oy - qz) - Math.hypot(b[0].ox - qx, -b[0].oy - qz));
       const [t, d] = RC.queue.shift(); if (RC.tiles.get(t.f) !== t) continue; RC.job = rcBuild(t, d);
     }
     if (RC.job.next().done) RC.job = null;
