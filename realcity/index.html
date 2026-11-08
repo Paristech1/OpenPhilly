@@ -4293,10 +4293,10 @@ function setTime(id, quiet) {
 // ---------------------------------------------------------------- quality
 const quality = { level: 'high', shadows: true, bloom: true };
 function setQuality(l, quiet) {
-  quality.level = l; quality.shadows = l === 'high'; quality.bloom = l !== 'low'; if (aoPass) aoPass.enabled = l === 'high';
-  renderer.setPixelRatio(l === 'low' ? 1 : Math.min(devicePixelRatio, maxPR));
+  quality.level = l; quality.shadows = l === 'high'; quality.bloom = l !== 'low'; if (aoPass) aoPass.enabled = false;   // GTAO cost ~40% of a frame on an M4 at 2x; dropped
+  renderer.setPixelRatio(rcPRReset(l));
   renderer.setSize(innerWidth, innerHeight); if (composer) { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(innerWidth, innerHeight); }
-  const sm = l === 'high' ? 4096 : l === 'medium' ? 2048 : 1024;
+  const sm = l === 'high' ? 2048 : 1024;
   sun.shadow.mapSize.set(sm, sm);
   sun.castShadow = TIMES[timeId].shadow && quality.shadows;
   refreshPanel(); if (!quiet) toast('Graphics: ' + l);
@@ -6179,6 +6179,33 @@ function rcTreeLOD() {
 }
 window.__gfx = () => ({ renderer, composer, aoPass, bloomPass, sun, scene, camera });
 
+// ---- dynamic resolution (Nov 8, real-GPU profile): hold 60 fps by trading pixel ratio (1.0-1.5) instead of flipping
+// between 60 and 30 fps or dropping shadows/bloom; quality levels only step down once the ratio is already at its floor.
+RC.pr = 1; RC.prMin = 1; RC.prMax = 1.5;
+let _drT = 0, _drN = 0, _drAcc = 0, _drLast = 0, _drGood = 0;
+function rcPRReset(l) {
+  RC.prMax = l === 'low' ? 1 : Math.min(devicePixelRatio || 1, isTouch ? 1.25 : 1.5); RC.prMin = Math.min(1, RC.prMax);
+  RC.pr = RC.prMax; _drAcc = _drN = 0; _drGood = 0; return RC.pr;
+}
+function rcDynRes() {
+  const now = performance.now(), dt = _drLast ? now - _drLast : 16.7; _drLast = now;
+  if (dt > 250) return;                       // tab was hidden / a load stall: ignore
+  _drAcc += dt; _drN++; _drT += dt;
+  if (_drT < 1500) return;
+  const avg = _drAcc / _drN; _drAcc = _drN = _drT = 0;
+  let pr = RC.pr;
+  if (avg > 19.5 && pr > RC.prMin) { pr = Math.max(RC.prMin, pr - 0.125); _drGood = 0; }
+  else if (avg < 16.9) { if (++_drGood >= 3 && pr < RC.prMax) { pr = Math.min(RC.prMax, pr + 0.125); _drGood = 0; } }
+  else _drGood = 0;
+  if (pr !== RC.pr) {
+    RC.pr = pr; renderer.setPixelRatio(pr); renderer.setSize(innerWidth, innerHeight);
+    if (composer) { composer.setPixelRatio(pr); composer.setSize(innerWidth, innerHeight); }
+  }
+}
+function rcHalfBloom(bp) {   // bloom is a blur: computing it at half resolution looks the same and halves its cost
+  const f = bp.setSize.bind(bp); bp.setSize = (w, h) => f(Math.max(1, Math.round(w / 2)), Math.max(1, Math.round(h / 2)));
+}
+
 // ---------------------------------------------------------------- boot
 const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
 async function boot() {
@@ -6209,7 +6236,7 @@ async function boot() {
     // film chain (vork-style): glare → bloom → white balance / vignette / AgX look / dither
     const { GlarePass } = makeFilmPasses(Pass, FullScreenQuad);
     glarePass = new GlarePass(); composer.addPass(glarePass);
-    bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.3, 0.5, 0.9);
+    bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.3, 0.5, 0.9); rcHalfBloom(bloomPass);
     composer.addPass(bloomPass);
     filmPass = new ShaderPass(FILM_SHADER); filmPass.uniforms.tGlare.value = glarePass.rtAcc.texture; composer.addPass(filmPass);
   } catch (e) { console.warn('Glow effects unavailable, rendering without them', e); composer = null; filmPass = null; }
@@ -6294,7 +6321,8 @@ function frame(now) {
   if (!$('map').hidden) drawMap();
   // auto quality: drop a level if we stay under ~28 fps
   fpsAcc += dt; fpsN++; fpsT += dt;
-  if (fpsT > 3 && !SHOT) { const avg = fpsAcc / fpsN; if (avg > 1 / 28 && quality.level !== 'low') setQuality(quality.level === 'high' ? 'medium' : 'low'); fpsAcc = fpsN = fpsT = 0; }
+  if (fpsT > 3 && !SHOT) { const avg = fpsAcc / fpsN; if (avg > 1 / 26 && RC.pr <= RC.prMin + 1e-3 && quality.level !== 'low') setQuality(quality.level === 'high' ? 'medium' : 'low'); fpsAcc = fpsN = fpsT = 0; }
+  rcDynRes();
   requestAnimationFrame(frame);
 }
 boot();
