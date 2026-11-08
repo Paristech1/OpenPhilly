@@ -5455,7 +5455,7 @@ const BFB = Object.assign(LMF(2461.4, -36.0, 14.57), { UPA: -1010, UNJ: 1252, GP
 // Blender set 2 (Center City towers, LOVE Park, Independence Hall, 30th St): grid frames at 9.18°, u = east, v = south.
 // Each: frame, z0 (base used in Blender), exclusion box [u0,u1,v0,v1] and collider boxes [u0,u1,v0,v1,top above z0]
 // neighbourhood packs built with tools/build_area.py: [x, z, radius, glb]
-const RC_PACKS = [[-3778.0, -13731.0, 240, 'ch'], [2502.8, -1850.4, 220, 'fi'], [-18.0, 2591.0, 210, 'ep'], [-4290.7, 303.7, 220, 'wp'], [494.7, 1491.7, 200, 'bv'], [-1086.2, 1092.0, 200, 'gh'], [-915.3, -1650.5, 210, 'fm'], [323.8, 647.9, 200, 'ws'], [1904.7, -1295.2, 200, 'nl']];
+const RC_PACKS = [[-3778.0, -13731.0, 240, 'ch'], [2502.8, -1850.4, 220, 'fi'], [-18.0, 2591.0, 210, 'ep'], [-4290.7, 303.7, 220, 'wp'], [494.7, 1491.7, 200, 'bv'], [-1086.2, 1092.0, 200, 'gh'], [-915.3, -1650.5, 210, 'fm'], [323.8, 647.9, 200, 'ws'], [1904.7, -1295.2, 200, 'nl'], [1263.8, 1536.2, 200, 'qv'], [-1257.1, 1813.7, 200, 'pb'], [-1710.0, -2461.1, 200, 'bt'], [2801.9, -2960.7, 200, 'ek'], [-5188.0, -8123.8, 220, 'my'], [1691.0, 203.7, 200, 'oc']];
 const LM2 = [
   { n: 'One Liberty Place', F: LMF(-371.47, -26.07, 9.18), z0: 11.97, ex: [-31, 31, -31, 31], cols: [[-30.5, 30.5, -30.8, 30.8, 9], [-28.5, 28.5, -28.5, 28.5, 236], [-22.5, 22.5, -22.5, 22.5, 262], [-9, 9, -9, 9, 276]] },
   { n: 'Two Liberty Place', F: LMF(-312.63, 72.28, 9.18), z0: 12.36, ex: [-25, 25, -27, 27], cols: [[-23.7, 23.7, -25.4, 25.4, 9], [-22.5, 22.5, -20, 20, 210], [-12.5, 12.5, -10.5, 10.5, 240]] },
@@ -5469,6 +5469,9 @@ const LM2 = [
   { n: 'Franklin Institute', F: LMF(-801.26, -655.57, 9.18), z0: 7.81, ex: [-64.5, 70, -61.5, 61.5], cols: [[-63.2, 63.2, -60.3, 60.3, 25.5], [63.2, 67.7, -37, 37, 3.5]] },
   { n: 'Liberty Bell Center', F: LMF(1155.82, 275.11, 9.18), z0: 8.34, ex: [-16, 12.5, -49.5, 49.5], cols: [[-11.2, 11.1, -48.1, 26.0, 8.5], [-11.4, 11.3, 26.0, 48.2, 13], [-15.5, -11.2, -45, 45, 7.3]] },
   { n: 'Eastern State Penitentiary', F: LMF(-747.8, -1779.1, 9.18), z0: 25.75, ex: [-110, 110, -109, 110], cols: [[-108, 108, -107, -105.4, 9.2], [-108, 108, 105.4, 107, 9.2], [-108, -106.4, -107, 107, 9.2], [106.4, 108, -107, 107, 9.2], [-22.7, 22.7, 95.4, 109, 21]] },
+  { n: 'FMC Tower', F: LMF(-1686.34, 31.63, 9.18), z0: 4.76, ex: [-33, 33, -21, 21], cols: [[-31.3, 31.3, -18.8, 18.8, 96], [-25.7, 13.1, -16.2, 16.2, 222]] },
+  { n: 'Cathedral Basilica of Saints Peter and Paul', F: LMF(-405.61, -562.72, 9.18), z0: 8.84, ex: [-48, 41, -40, 40], cols: [[-37.7, 37.7, -15, 15, 23], [-7, 19, -37.2, 37.2, 23], [-46.7, -37.7, -11, 11, 22]] },
+  { n: 'Wanamaker Building', F: LMF(140.15, 103.72, 9.18), z0: 12.92, ex: [-41.5, 41.5, -77, 77], cols: [[-40.7, 40.7, -76.2, 76.2, 79.2]] },
 ];
 function pmaStair(u) {
   const tread = 0.42, rise = (PMA.ZC - PMA.ZB) / 72, fl = 24 * tread, land = (48 - 3 * fl) / 2; let d = u - PMA.U0;
@@ -5534,8 +5537,9 @@ async function rcLandmarkModels() {
     IH_Clock_Glow: 2.6, IH_Steeple_Glow: 1.1, TS_Portico_Glow: 2.0 };
   const kOf = n => K[n] !== undefined ? K[n] : /_Win$/.test(n) ? 1.15 : /_Glow$/.test(n) ? 2 : 0;
   // load all models in parallel (nearest first in the list so they arrive first on slow links)
-  const FILES = ['pma', 'bhr', 'bfb', 'cc', 'lp', 'ih', 'ts', 'fa', 'ga', 'sh', 'ma', 'rf', 'gt', 'l3', 'es', ...RC_PACKS.map(p => p[3])];
-  await Promise.all(FILES.map(async f => {
+  // landmarks load up front; neighbourhood packs stream in by distance (rcPackStream) so boot and memory stay light
+  const FILES = ['pma', 'bhr', 'bfb', 'cc', 'lp', 'ih', 'ts', 'l3', 'es', 'l4'];
+  const load = async f => {
     try {
       const g = await new GL().loadAsync('data/' + f + '.wasm');
       g.scene.traverse(o => { if (!o.isMesh) return; o.castShadow = true; o.receiveShadow = true;
@@ -5543,11 +5547,29 @@ async function rcLandmarkModels() {
         if (k) { if (m.emissiveMap) m.emissive.setRGB(1, 1, 1); m.emissiveIntensity = lampLevel * k; if (!GLOW.some(g => g.m === m)) GLOW.push({ m, k }); }
         if (m.map) { m.map.anisotropy = 4; } });
       if (f === 'lp') g.scene.position.y = 1.6;   // plaza level with the surrounding streets
-      scene.add(g.scene); (window.__lm = window.__lm || []).push(f);
-    } catch (e) { console.warn('landmark model unavailable: ' + f, e); (window.__lm = window.__lm || []).push('ERR ' + f + ' ' + (e && e.message)); }
-  }));
+      scene.add(g.scene); (window.__lm = window.__lm || []).push(f); return g.scene;
+    } catch (e) { console.warn('landmark model unavailable: ' + f, e); (window.__lm = window.__lm || []).push('ERR ' + f + ' ' + (e && e.message)); return null; }
+  };
+  RC.loadModel = load;
+  await Promise.all(FILES.map(load));
 }
-RC_LM.unshift(['Two Liberty Place', -312.6, 72.3, 40], ['One Liberty Place', -371.5, -26.1, 45], ['Comcast Technology Center', -564.6, -297.1, 70], ['Comcast Center', -414.3, -263.3, 55], ['LOVE Park', -160, -205, 70], ['Independence Hall', 1176.5, 382, 60], ['30th Street Station', -1550, -400, 130], ['Cira Centre', -1593.4, -555.5, 45], ['BNY Mellon Center', -489.7, -145.5, 45], ['Franklin Institute', -801.3, -655.6, 70], ['Liberty Bell Center', 1155.8, 275.1, 45], ['Eastern State Penitentiary', -747.8, -1779.1, 110]);
+// neighbourhood packs: [x, z, r, file]; loaded within r + 1.6 km of the camera, released beyond r + 4 km
+const RC_NB = [[-227.4, -8196, 190, 'fa'], [-829.8, -9145.4, 210, 'ga'], [1434.6, 814.5, 170, 'sh'], [-1778.4, -10510.9, 230, 'ma'], [-1171.6, 525.8, 200, 'rf'], [-1684.4, -9622.8, 220, 'gt'], ...RC_PACKS];
+const RC_NBS = {};
+function rcPackStream() {
+  if (!RC.loadModel) return;
+  const cx = camera.position.x, cz = camera.position.z;
+  for (const [x, z, r, f] of RC_NB) {
+    const d = Math.hypot(x - cx, z - cz), st = RC_NBS[f];
+    if (d < r + 1600 && !st) { RC_NBS[f] = { busy: true }; RC.loadModel(f).then(o => { RC_NBS[f] = { obj: o }; }); }
+    else if (d > r + 4000 && st && st.obj) {
+      scene.remove(st.obj);
+      st.obj.traverse(o => { if (o.isMesh) { o.geometry.dispose(); for (const k of ['map', 'emissiveMap']) if (o.material[k]) o.material[k].dispose(); const gi = GLOW.findIndex(g => g.m === o.material); if (gi >= 0) GLOW.splice(gi, 1); o.material.dispose(); } });
+      delete RC_NBS[f]; window.__lm = (window.__lm || []).filter(n => n !== f);
+    }
+  }
+}
+RC_LM.unshift(['Two Liberty Place', -312.6, 72.3, 40], ['One Liberty Place', -371.5, -26.1, 45], ['Comcast Technology Center', -564.6, -297.1, 70], ['Comcast Center', -414.3, -263.3, 55], ['LOVE Park', -160, -205, 70], ['Independence Hall', 1176.5, 382, 60], ['30th Street Station', -1550, -400, 130], ['Cira Centre', -1593.4, -555.5, 45], ['BNY Mellon Center', -489.7, -145.5, 45], ['Franklin Institute', -801.3, -655.6, 70], ['Liberty Bell Center', 1155.8, 275.1, 45], ['Eastern State Penitentiary', -747.8, -1779.1, 110], ['FMC Tower', -1686.3, 31.6, 40], ['Cathedral Basilica', -405.6, -562.7, 50], ['Wanamaker Building', 140.2, 103.7, 70]);
 TP.push(
   { name: 'LOVE Park', sub: 'JFK Plaza · 15th & JFK', x: -95, z: -150, yaw: 0.87 },
   { name: 'Comcast towers', sub: '18th & Arch', x: -480, z: -205, yaw: 0 },
@@ -5583,7 +5605,16 @@ SCENIC.push(
   { name: 'Washington Square West', pos: [440, 55, 770], look: [323.8, 8, 647.9], fov: 50 },
   { name: 'Northern Liberties', pos: [2030, 55, -1170], look: [1904.7, 8, -1295.2], fov: 50 },
   { name: 'Eastern State Penitentiary gate', pos: [-737.0, 2.5, -1657.8], look: [-765, 11, -1672], fov: 55 },
-  { name: 'Eastern State from above', pos: [-600, 160, -1560], look: [-748, 20, -1779], fov: 50 }
+  { name: 'Eastern State from above', pos: [-600, 160, -1560], look: [-748, 20, -1779], fov: 50 },
+  { name: 'Queen Village', pos: [1380, 55, 1650], look: [1263.8, 8, 1536.2], fov: 50 },
+  { name: 'Point Breeze', pos: [-1140, 55, 1930], look: [-1257.1, 8, 1813.7], fov: 50 },
+  { name: 'Brewerytown (Girard Ave)', pos: [-1590, 60, -2340], look: [-1710, 10, -2461.1], fov: 50 },
+  { name: 'East Kensington (Frankford Ave)', pos: [2920, 55, -2840], look: [2801.9, 8, -2960.7], fov: 50 },
+  { name: 'Manayunk Main Street', pos: [-5060, 70, -8000], look: [-5188, 15, -8123.8], fov: 50 },
+  { name: 'Old City', pos: [1810, 55, 320], look: [1691, 8, 203.7], fov: 50 },
+  { name: 'FMC Tower over the Schuylkill', pos: [-1420, 60, 160], look: [-1686, 120, 31.6], fov: 50 },
+  { name: 'Cathedral Basilica on Logan Square', pos: [-500, 6, -590], look: [-410, 26, -560], fov: 55 },
+  { name: 'Wanamaker Building at 13th & Market', pos: [40, 30, 20], look: [140, 40, 104], fov: 55 }
 );
 // solids: museum terrace + the 72 steps, the bridge deck
 function rcKitSolid(x, z) {
@@ -6166,6 +6197,7 @@ RC.treeChunks = [];
 let _tlodF = 0;
 function rcTreeLOD() {
   if ((_tlodF++ & 7) !== 0) return;
+  if ((_tlodF & 31) === 1) rcPackStream();
   const cx = camera.position.x, cz = camera.position.z, L = RC.treeChunks; let w = 0;
   for (let i = 0; i < L.length; i++) {
     const c = L[i], m = c.m; if (!m.parent) continue; L[w++] = c;
