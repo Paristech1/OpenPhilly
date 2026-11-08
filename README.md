@@ -13,7 +13,8 @@ OpenPhilly/
 ├── index.html   <- the whole game
 ├── README.md
 └── docs/
-    └── spec.md  <- build spec
+    ├── spec.md  <- build spec
+    └── blender-pbr-gltf-characters.md  <- Blender skin/cloth/hair → glTF for Three.js
 ```
 
 1. Open the GitHub Pages link above, or open `index.html` locally (needs internet for three.js and fonts from jsDelivr / Google Fonts).
