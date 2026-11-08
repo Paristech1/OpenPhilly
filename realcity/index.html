@@ -6228,6 +6228,24 @@ function* rcBuildings(t, d) {
         rcBoxE(DB, ax, az, ex, ez, nx, nz, L * 0.5 + 0.6, L - 0.2, dp - 0.24, dp - 0.16, yf + 0.8, yf + 0.9, _cp);
       }
     }
+    // v18.11: projecting bay windows (2nd-3rd floor oriels) on some rowhouse fronts
+    if (!pitched && s <= 2 && h >= 7 && h <= 16 && A < 300 && (reg === 'cc' || reg === 'south' || reg === 'west') && rcHash(b * 97 + 3) < 0.28) {
+      if (!RG) RG = rcRoadGrid(d);
+      let fb = null;
+      for (let q = 0; q < n; q++) {
+        const i = rev ? n - 1 - q : q, j = rev ? (i - 1 + n) % n : (i + 1) % n;
+        const dx = xs[j] - xs[i], dz = zs[j] - zs[i], L = Math.hypot(dx, dz); if (L < 4.5 || L > 9) continue;
+        const nx = -dz / L, nz = dx / L, mx = (xs[i] + xs[j]) / 2, mz = (zs[i] + zs[j]) / 2, nr = rcNearRoad(RG, mx + nx * 5, mz + nz * 5); if (!nr) continue;
+        const dd = Math.hypot(nr[2] - mx, nr[3] - mz); if (dd > nr[1][4] / 2 + 6 || ((nr[2] - mx) * nx + (nr[3] - mz) * nz) < 0.6 * dd) continue;
+        if (!fb || dd < fb[0]) fb = [dd, i, L, nx, nz, dx / L, dz / L];
+      }
+      if (fb) {
+        const [, i, L, nx, nz, ex, ez] = fb, yg = rcH(xs[i] + ex * L / 2, zs[i] + ez * L / 2), w0 = L * 0.22, w1 = L * 0.78, top = Math.min(yt - 0.8, yg + 9.2);
+        _cr.copy(_cw).multiplyScalar(0.82);
+        rcBoxE(DB, xs[i], zs[i], ex, ez, nx, nz, w0, w1, 0, 0.75, yg + 3.3, top, _cr);
+        rcBoxE(DB, xs[i], zs[i], ex, ez, nx, nz, w0 - 0.1, w1 + 0.1, -0.02, 0.85, top, top + 0.18, _cc.copy(RC_CORN[Math.floor(rcHash(b * 101) * RC_CORN.length) % RC_CORN.length]));
+      }
+    }
     // v18: ground-floor shops on commercial corridors (secondary streets and up): glass shopfront, sign fascia, awning
     if (!pitched && (s <= 2 || s === 5 || s === 9) && h >= 5.5 && A < 1400 && rcHash(b * 67 + 8) < (RC_STORE_P[reg] || 0)) {
       if (!RG) RG = rcRoadGrid(d);
