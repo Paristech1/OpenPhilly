@@ -5119,7 +5119,11 @@ function* rcBuild(t, d) {
   // ---- streets, footpaths, centre lines; drivable polylines for traffic; bridges; atlas
   const A = rcNewArr(), W = rcNewArr(); let s = 0;
   const mc = RC.mapBase.getContext('2d');
-  for (let r = 0; r < d.nr; r++) {
+  // v18.5: bridges first, so the approach roads that meet them can ramp up to the raised abutments
+  const RO = [], ROFF = new Int32Array(d.nr); { let o = 0; for (let r = 0; r < d.nr; r++) { ROFF[r] = o; o += d.rn[r]; RO.push(r); } }
+  RO.sort((a, b) => (d.rf[b] & 1) - (d.rf[a] & 1));
+  for (const r of RO) {
+    s = ROFF[r];
     let n0 = d.rn[r], c = d.rc[r], fl = d.rf[r], P0 = new Float32Array(2 * n0);
     for (let i = 0; i < n0; i++) { P0[2 * i] = d.ox + d.rp[2 * (s + i)] / 4; P0[2 * i + 1] = -(d.oy + d.rp[2 * (s + i) + 1] / 4); }
     s += n0; let w = RC_RCLS_W[c];
@@ -5137,7 +5141,7 @@ function* rcBuild(t, d) {
       Y = new Float32Array(n); const ya = rcH(P[0], P[1]) + lift, yb = rcH(P[2 * n - 2], P[2 * n - 1]) + lift, Lb = Math.max(cum[n - 1], 1e-3);
       for (let i = 0; i < n; i++) Y[i] = Math.max(ya + (yb - ya) * cum[i] / Lb, rcH(P[2 * i], P[2 * i + 1]) + lift);
       rcBridgeClearance(P, n, cum, Y, w);
-    } else Y = rcProfile(P, n, cum, lift);
+    } else { Y = rcProfile(P, n, cum, lift); if (c <= 4 || c === 6) { if (rcApproachRamp(P, n, cum, Y)) rcMarkBridge(P, n, w / 2, Y); } }   // embankment approach: drivable at its raised height
     if (tr) for (let i = 0; i < n; i++) Y[i] -= rcTrenchD(P[2 * i], P[2 * i + 1]);
     let trEdge = false;
     if (!tr && !(fl & 1) && c <= 4) { let k = 0; for (let i = 0; i < n; i++) if (rcTrenchAt(P[2 * i], P[2 * i + 1])) k++; if (k) { rcMarkBridge(P, n, w / 2, Y); { const ewW = Math.abs(P[2 * n - 2] - P[0]) > Math.abs(P[2 * n - 1] - P[1]); trEdge = ewW === rcTrenchEW(P[0], P[1]); } if (!trEdge) { if (!RC.trMat) RC.trMat = new THREE.MeshStandardMaterial({ color: '#8f8b84', roughness: 0.95, metalness: 0, side: THREE.DoubleSide }); rcTrenchDeck(t, P, n, Y, w); } } }   // cross streets over the trench are decks; the frontage lanes along its lip lose their inner kerb
@@ -5900,6 +5904,18 @@ function rcWayIn(S, P0, n0) {
 const rcIsTunnel = (P0, n0) => rcWayIn(rcTunKeys, P0, n0);
 const rcIsVia = (P0, n0) => rcWayIn(rcViaKeys, P0, n0);
 const rcXGrid = new Map(); for (const c of RC_XING) { if (rcTrenchAt(c[0], c[1])) continue; const k = Math.floor(c[0] / 256) + ',' + Math.floor(c[1] / 256); let a = rcXGrid.get(k); if (!a) rcXGrid.set(k, a = []); a.push(c); }
+RC.ramps = new Map();   // end key -> raised abutment height
+function rcApproachRamp(P, n, cum, Y) {   // an ordinary road meeting a raised abutment climbs to it at ~6.5% (an embankment ramp)
+  if (!RC.ramps.size) return false;
+  const L = cum[n - 1]; let any = false;
+  for (const [end, k] of [[0, rcEndKey(P[0], P[1])], [1, rcEndKey(P[2 * n - 2], P[2 * n - 1])]]) {
+    const yt = RC.ramps.get(k); if (yt === undefined) continue;
+    const y0 = end ? Y[n - 1] : Y[0]; if (yt - y0 < 0.3) continue;
+    for (let i = 0; i < n; i++) { const dist = end ? L - cum[i] : cum[i], ry = yt - 0.065 * dist; if (ry > Y[i]) Y[i] = ry; }
+    any = true;
+  }
+  return any;
+}
 function rcBridgeClearance(P, n, cum, Y, w) {
   if (n < 3) return;
   let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
@@ -5915,6 +5931,10 @@ function rcBridgeClearance(P, n, cum, Y, w) {
       }
       if (best > w / 2 + 4) continue;
       const L = cum[n - 1];
+      // v18.5: lift the abutments too (6.5% down from the crossing) and leave a note so the approach roads ramp up to them
+      const ya = Math.max(Y[0], need - 0.065 * sb), yb = Math.max(Y[n - 1], need - 0.065 * (L - sb));
+      if (ya - Y[0] > 0.4) { const k = rcEndKey(P[0], P[1]); RC.ramps.set(k, Math.max(RC.ramps.get(k) || -1e9, ya)); Y[0] = ya; }
+      if (yb - Y[n - 1] > 0.4) { const k = rcEndKey(P[2 * n - 2], P[2 * n - 1]); RC.ramps.set(k, Math.max(RC.ramps.get(k) || -1e9, yb)); Y[n - 1] = yb; }
       for (let i = 1; i < n - 1; i++) {
         const cap = cum[i] < L - cum[i] ? Y[0] + 0.12 * cum[i] : Y[n - 1] + 0.12 * (L - cum[i]);   // never steeper than 12% off the abutments
         Y[i] = Math.max(Y[i], Math.min(need - 0.10 * Math.abs(cum[i] - sb), cap));
