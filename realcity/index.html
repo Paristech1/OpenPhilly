@@ -5140,6 +5140,7 @@ function* rcBuild(t, d) {
     if (fl & 1) {   // bridge: straight grade between the two abutments (which sit exactly on the approach roads), never below the terrain
       Y = new Float32Array(n); const ya = rcH(P[0], P[1]) + lift, yb = rcH(P[2 * n - 2], P[2 * n - 1]) + lift, Lb = Math.max(cum[n - 1], 1e-3);
       for (let i = 0; i < n; i++) Y[i] = Math.max(ya + (yb - ya) * cum[i] / Lb, rcH(P[2 * i], P[2 * i + 1]) + lift);
+      if ((fl & 2) && Lb > 60) for (let i = 1; i < n - 1; i++) Y[i] = Math.max(Y[i], ya + (yb - ya) * cum[i] / Lb + Math.min(7, 0.06 * Math.min(cum[i], Lb - cum[i])));   // v18.9: long layer-1 bridges (ramps over rail yards, river spans) arch up instead of lying flat
       rcBridgeClearance(P, n, cum, Y, w);
     } else { Y = rcProfile(P, n, cum, lift); if (c <= 4 || c === 6) { if (rcApproachRamp(P, n, cum, Y)) rcMarkBridge(P, n, w / 2, Y); } }   // embankment approach: drivable at its raised height
     if (tr) for (let i = 0; i < n; i++) Y[i] -= rcTrenchD(P[2 * i], P[2 * i + 1]);
