@@ -6113,7 +6113,7 @@ function* rcTreeCell(list, seed, out) {
     const S = RC_SPEC[t.sp], pal = RC_TPAL[S[0]], r = (2.0 + R() * 1.4) * t.sc, hh = (5 + R() * 4) * t.sc;
     const trunkH = hh * S[4] + r * 0.4, cy = t.y + trunkH + r * 0.55 * S[3];
     trunks.push([t.x, t.y, t.z, r * (S[1] === 'cone' ? 0.6 : 1), trunkH + r * 0.3, R() * 6.28]);
-    const key = S[1] === 'cone' ? 'cone' : 'c' + Math.floor(R() * 3);
+    const key = S[1] === 'cone' ? 'cone' : (R(), 'c' + (seed & 1 ? 0 : 2));   // one canopy shape per cell (alternating by cell): 3 -> 1 instanced meshes, far fewer draw calls
     const col = pal[Math.floor(R() * pal.length)];
     const sx = r * S[2] * (0.92 + R() * 0.16), sy = r * S[3] * (0.92 + R() * 0.16) * (S[1] === 'cone' ? 1.25 : 1);
     if (t.sp === 'bare') byGeo[key].push([t.x, cy, t.z, sx * 0.6, sy * 0.72, sx * 0.6, R() * 6.28, col]);
