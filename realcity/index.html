@@ -6204,7 +6204,10 @@ window.__stepStats = {};
 RC.treeChunks = [];
 let _tlodF = 0;
 function rcTreeLOD() {   // runs every frame, scenic shots included
-  if (RC.revealQ && RC.revealQ.length) for (let k = 0; k < 3 && RC.revealQ.length; k++) { const o = RC.revealQ.shift(); if (o.parent) o.visible = true; }
+  if (RC.revealQ && RC.revealQ.length) {   // ~1.5 ms of uploads per frame; drop meshes whose pack was already released
+    const t0 = performance.now(); let k = 0;
+    while (RC.revealQ.length && (k < 3 || performance.now() - t0 < 1.5)) { const o = RC.revealQ.shift(); let r = o; while (r.parent) r = r.parent; if (r === scene) { o.visible = true; k++; } }
+  }
   if ((_tlodF++ & 7) !== 0) return;
   if ((_tlodF & 31) === 1) rcPackStream();
   const cx = camera.position.x, cz = camera.position.z, L = RC.treeChunks; let w = 0;

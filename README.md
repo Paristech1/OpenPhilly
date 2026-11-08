@@ -6,6 +6,8 @@ A Philadelphia remix of mrdoob's Slop New York (MIT): an explorable 3D Center Ci
 
 **Play in the browser:** [https://paristech1.github.io/OpenPhilly/](https://paristech1.github.io/OpenPhilly/) (GitHub Pages)
 
+**Real City (all of Philadelphia from OpenStreetMap, real terrain, Blender landmarks and neighbourhoods):** [https://paristech1.github.io/OpenPhilly/realcity/](https://paristech1.github.io/OpenPhilly/realcity/)
+
 ```
 OpenPhilly/
 ├── index.html   <- the whole game
