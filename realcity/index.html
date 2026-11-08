@@ -4047,7 +4047,7 @@ function setCam(id, idx) {
     scenicIdx = idx;
     const s = SCENIC[idx];
     if (s.time) setTime(s.time, true);
-    if (s.q) setQuality(s.q, true);
+    if (s.q && !quality.user) setQuality(s.q, true);
   }
   autoT = 0; autoShot = 0; flybyPos = null;
   refreshPanel();
@@ -4946,7 +4946,7 @@ function rcStrip(arr, P, n, cum, Yc, o) {
   }
   const b1 = o.endCol >= 0 && L > 2 * o.endLen + 6 ? o.endLen : -1, b2 = L - b1;
   const colAt = s => b1 > 0 && (s < b1 || s > b2) ? o.endCol : o.col;
-  const { pos, nor, uv, idx } = arr, base = arr.off, NC = 4, INS = 0.04;
+  const { pos, nor, uv, idx } = arr, base = arr.off, NC = 8, INS = 0.04;
   let rows = 0;
   const row = (cx, cz, yc, s, nx, nz, mt, col) => {
     const l = Math.hypot(nx, nz) || 1; nx /= l; nz /= l;
@@ -4959,7 +4959,7 @@ function rcStrip(arr, P, n, cum, Yc, o) {
       let y = yc + dy;
       if (edge) { const he = rcH(ex, ez); y = skirt ? he + 0.04 : Math.max(yc + dy + clamp(he - hc, -0.25 * h - 0.2, 0.25 * h + 0.2), he + 0.05 + dy); }   // on side-hills the uphill edge rides the slope instead of disappearing under the ground
       pos.push(ex, y, ez); nor.push(tx, ty, tz);
-      if (atlas) { const t = clamp(0.5 - d / (2 * h * mt), 0, 1); uv.push((col + INS + t * (1 - 2 * INS)) / NC, s / RC_TILEV); }
+      if (atlas) { const t0 = clamp(0.5 - d / (2 * h * mt), 0, 1), t = o.flip ? 1 - t0 : t0; uv.push((col + INS + t * (1 - 2 * INS)) / NC, s / RC_TILEV); }
       else uv.push((-d / (o.tile || 3)) + 0.5, s / (o.tile || 3));
     }
     rows++;
@@ -4986,16 +4986,21 @@ function rcPNoise(gw, gh, seed) {
 // Road atlas: 4 columns x 256 px across the road, 512 px = 12 m along it. Markings + worn tracks only; the world-space grain, patches, cracks and wet sheen
 // come from the game's asphalt shader.   cols: 0 arterial (c0,c1), 1 collector (c2), 2 residential (c3,c6), 3 plain (alleys, junction mouths)
 function rcRoadAtlas() {
-  const W = 1024, H = 512, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const W = 2048, H = 512, cv = document.createElement('canvas'); cv.width = W; cv.height = H;   // v18.2: 8 columns (4 two-way + 3 one-way markings)
   const cx = cv.getContext('2d'), img = cx.createImageData(W, H), D = img.data;
   const n1 = rcPNoise(6, 5, 11), n2 = rcPNoise(24, 20, 23), n3 = rcPNoise(3, 3, 5), wr = rcPNoise(64, 24, 71);
   const COL = [
     { W: 17.5, track: [0.125, 0.375, 0.625, 0.875], tw: 0.045, lines: [[0.034, 0.046, 'w'], [0.954, 0.966, 'w'], [0.484, 0.4955, 'y'], [0.5045, 0.516, 'y'], [0.245, 0.255, 'w', 12, 3], [0.745, 0.755, 'w', 12, 3]] },
     { W: 12, track: [0.3, 0.7], tw: 0.06, lines: [[0.052, 0.066, 'w'], [0.934, 0.948, 'w'], [0.475, 0.49, 'y'], [0.51, 0.525, 'y']] },
     { W: 8, track: [0.27, 0.73], tw: 0.09, lines: [] },
-    { W: 5, track: [0.5], tw: 0.12, lines: [] }];
+    { W: 5, track: [0.5], tw: 0.12, lines: [] },
+    // one-way carriageways (t = 0 is the right-hand kerb, t = 1 the left): white right edge, yellow left edge, dashed lane lines
+    { W: 13, track: [0.17, 0.5, 0.83], tw: 0.06, lines: [[0.04, 0.052, 'w'], [0.948, 0.96, 'y'], [0.328, 0.338, 'w', 12, 3], [0.662, 0.672, 'w', 12, 3]] },
+    { W: 9, track: [0.25, 0.75], tw: 0.08, lines: [[0.045, 0.06, 'w'], [0.94, 0.955, 'y'], [0.493, 0.507, 'w', 12, 3]] },
+    { W: 6, track: [0.5], tw: 0.12, lines: [[0.05, 0.07, 'w'], [0.93, 0.95, 'y']] },
+    { W: 8, track: [0.27, 0.73], tw: 0.09, lines: [] }];
   const PAINT = { w: [214, 212, 204], y: [205, 164, 38] }, ppt = 0.92 * 256, ppm = H / RC_TILEV;
-  for (let c = 0; c < 4; c++) {
+  for (let c = 0; c < 8; c++) {
     const C = COL[c];
     for (let py = 0; py < H; py++) for (let px = 0; px < 256; px++) {
       const x = px + c * 256, o = (py * W + x) * 4, tl = (px / 256 - 0.04) / 0.92, yv = py / H, ym = py / ppm, tc = clamp(tl, 0, 1);
@@ -5120,6 +5125,8 @@ function* rcBuild(t, d) {
     s += n0; let w = RC_RCLS_W[c];
     const tr = rcIsTrench(P0, n0);
     if (!tr && rcIsTunnel(P0, n0)) continue;   // covered roadways (e.g. I-76 under the 30th St decks) would clash with the streets above; the Vine St trench's short tunnels stay
+    const ow = (fl & 4) ? ((fl & 8) ? -1 : 1) : 0, ln = (fl >> 4) & 7;
+    if (ow && c !== 3 && c !== 4) w = ln ? clamp(ln * 3.5 + 2.2, 6, RC_RCLS_W[c]) : c === 0 ? 14 : c === 6 ? 6.5 : RC_RCLS_W[c];   // one carriageway of a divided road is narrower than the two-way default
     if (tr) w = 13;   // three lanes + shoulders each way; OSM's frontage Vine St lanes run right along the cut
     if (rcIsVia(P0, n0)) fl |= 1;       // elevated viaducts (I-95) were packed as plain roads
     const P = rcConform(P0, n0, 20), n = P.length / 2, lift = c === 5 ? 0.3 : 0.32 + (6 - c) * 0.008;
@@ -5139,14 +5146,15 @@ function* rcBuild(t, d) {
     if (c === 5) rcStrip(W, P, n, cum, Y, { w, mode: 'tile', tile: 3, skirt: !brg, edge: !brg });
     else {
       if (SW > 0) rcStrip(W, P, n, cum, Y, { w: w + 2 * SW, mode: 'tile', tile: 3, dy: -0.045, skirt: true });
-      rcStrip(A, P, n, cum, Y, { w, mode: 'atlas', col: c <= 1 ? 0 : c === 2 ? 1 : c === 4 ? 3 : 2, endCol: c <= 2 ? 3 : -1, endLen: c <= 1 ? 7 : 6, skirt: !brg && SW === 0, edge: !brg });
+      const oc = ow && c !== 3 && c !== 4 ? ((ln || (c === 0 ? 3 : c === 6 ? 1 : 2)) >= 3 ? 4 : (ln || (c === 6 ? 1 : 2)) === 2 ? 5 : 6) : -1;
+      rcStrip(A, P, n, cum, Y, { w, mode: 'atlas', col: oc >= 0 ? oc : c <= 1 ? 0 : c === 2 ? 1 : c === 4 ? 3 : 2, flip: ow < 0, endCol: c <= 2 ? 3 : -1, endLen: c <= 1 ? 7 : 6, skirt: !brg && SW === 0, edge: !brg });
     }
     if (tr) rcTrenchWalls(t, P, n, Y, w);
     if ((fl & 1) && c !== 5) rcMarkBridge(P, n, w / 2, Y);   // footpath bridges don't make the water drivable (teleports landed on them)
     if (c <= 3 || c === 6) {
       const cum = new Float32Array(n); for (let i = 1; i < n; i++) cum[i] = cum[i - 1] + Math.hypot(P[2 * i] - P[2 * i - 2], P[2 * i + 1] - P[2 * i - 1]);
-      if (cum[n - 1] > 12) {
-        const rd = { P, Y, n, cum, L: cum[n - 1], cls: c, w, k0: rcEndKey(P[0], P[1]), k1: rcEndKey(P[2 * n - 2], P[2 * n - 1]), dead: false };
+      if (cum[n - 1] > 0.5) {   // short connector ways stay in the graph so traffic can cross split intersections
+        const rd = { P, Y, n, cum, L: cum[n - 1], cls: c, w, ow: (fl & 4) ? ((fl & 8) ? -1 : 1) : 0, ln: (fl >> 4) & 7, k0: rcEndKey(P[0], P[1]), k1: rcEndKey(P[2 * n - 2], P[2 * n - 1]), dead: false };
         for (const e of [rd.k0, rd.k1]) { let a = RC.ends.get(e); if (!a) RC.ends.set(e, a = []); a.push(rd); }
         RC.roads.add(rd); t.roads.push(rd);
       }
@@ -5253,22 +5261,32 @@ function rcRoadPoint(rd, s, out) {
 function rcSpawnCar(c, near) {
   const cand = [];
   for (const rd of RC.roads) {
-    if (rd.dead || rd.cls > 3 && rd.cls !== 6) continue;
+    if (rd.dead || rd.L < 25 || rd.cls > 3 && rd.cls !== 6) continue;
     const mi2 = (rd.n >> 1) * 2, mx = rd.P[mi2], mz = rd.P[mi2 + 1];
     const d = Math.hypot(mx - P.pos.x, mz - P.pos.z);
     if (d > (near ? 140 : 60) && d < 650) cand.push(rd);
   }
   if (!cand.length) { c.rd = null; return; }
   const rd = cand[Math.floor(rnd() * cand.length)];
-  c.rd = rd; c.dir = rnd() < 0.5 ? 1 : -1; c.s = rnd() * rd.L; c.v = RC_SPD[rd.cls] * 0.6; c.init = false; c.kx = c.kz = c.kvx = c.kvz = c.ky = c.kvy = 0;
+  c.rd = rd; c.dir = rd.ow || (rnd() < 0.5 ? 1 : -1); c.lane = rnd(); c.s = rnd() * rd.L; c.v = RC_SPD[rd.cls] * 0.6; c.init = false; c.kx = c.kz = c.kvx = c.kvz = c.ky = c.kvy = 0;
 }
 function rcNextRoad(c) {
   const rd = c.rd, atEnd = c.dir > 0, key = atEnd ? rd.k1 : rd.k0, ex = atEnd ? rd.P[2 * rd.n - 2] : rd.P[0], ez = atEnd ? rd.P[2 * rd.n - 1] : rd.P[1];
-  const opts = (RC.ends.get(key) || []).filter(r => r !== rd && !r.dead && (r.cls <= 3 || r.cls === 6));
-  if (!opts.length) { c.dir = -c.dir; c.s = clamp(c.s, 0, rd.L); return; }
-  const nx = opts[Math.floor(rnd() * opts.length)];
-  const d0 = Math.hypot(nx.P[0] - ex, nx.P[1] - ez), d1 = Math.hypot(nx.P[2 * nx.n - 2] - ex, nx.P[2 * nx.n - 1] - ez);
-  c.rd = nx; if (d0 <= d1) { c.dir = 1; c.s = 0; } else { c.dir = -1; c.s = nx.L; }
+  // v18.2: respect one-way streets (OSM oneway, motorways, roundabouts) and prefer going straight on at junctions
+  const hx = atEnd ? rd.P[2 * rd.n - 2] - rd.P[2 * rd.n - 4] : rd.P[0] - rd.P[2], hz = atEnd ? rd.P[2 * rd.n - 1] - rd.P[2 * rd.n - 3] : rd.P[1] - rd.P[3], hl = Math.hypot(hx, hz) || 1;
+  const opts = [];
+  for (const r of RC.ends.get(key) || []) {
+    if (r === rd || r.dead || !(r.cls <= 3 || r.cls === 6)) continue;
+    const d0 = Math.hypot(r.P[0] - ex, r.P[1] - ez), d1 = Math.hypot(r.P[2 * r.n - 2] - ex, r.P[2 * r.n - 1] - ez), dir = d0 <= d1 ? 1 : -1;
+    if (r.ow && r.ow !== dir) continue;   // would drive the wrong way
+    const ox = dir > 0 ? r.P[2] - r.P[0] : r.P[2 * r.n - 4] - r.P[2 * r.n - 2], oz = dir > 0 ? r.P[3] - r.P[1] : r.P[2 * r.n - 3] - r.P[2 * r.n - 1], ol = Math.hypot(ox, oz) || 1;
+    const cos = (hx * ox + hz * oz) / (hl * ol); if (cos < -0.6) continue;   // no U-turns onto the opposite carriageway
+    const wgt = (cos > 0.7 ? 3 : 1) * (r.cls <= rd.cls ? 1.5 : 1);   // mostly straight on, and stay on the bigger road
+    opts.push([r, dir, wgt]);
+  }
+  if (!opts.length) { if (rd.ow) { c.rd = null; c.cool = 0; return; } c.dir = -c.dir; c.s = clamp(c.s, 0, rd.L); return; }
+  let tw = 0; for (const o of opts) tw += o[2]; let u = rnd() * tw, pick = opts[0]; for (const o of opts) { u -= o[2]; if (u <= 0) { pick = o; break; } }
+  const [nx, ndir] = pick; c.rd = nx; c.dir = ndir; c.s = ndir > 0 ? 0 : nx.L;
 }
 buildTraffic = function () {
   const nm = Math.max(1, MODELS.length), N = isTouch ? 36 : 72;
@@ -5308,8 +5326,10 @@ updateTraffic = function (dt, t) {
     c.v += (want - c.v) * Math.min(1, dt * (want < c.v ? 5 : 1));
     c.s += c.v * dt * c.dir;
     if (c.s > c.rd.L || c.s < 0) rcNextRoad(c);
+    if (!c.rd) { for (const k in g.ims) g.ims[k].setMatrixAt(c.slot, _hide); for (let k = 0; k < 4; k++) traffic.wheels.setMatrixAt(c.wi + k, _hide); c.x = 0; c.z = -99999; continue; }   // dead end of a one-way: respawn next frame
     rcRoadPoint(c.rd, c.s, _rp);
-    const fx = _rp[2] * c.dir, fz = _rp[3] * c.dir, lane = c.rd.w * 0.25;
+    const fx = _rp[2] * c.dir, fz = _rp[3] * c.dir, nl = c.rd.ow ? Math.max(1, c.rd.ln || (c.rd.cls === 0 ? 3 : c.rd.cls === 6 ? 1 : 2)) : 0,
+      lane = nl ? c.rd.w * ((Math.floor((c.lane || 0) * nl) + 0.5) / nl - 0.5) * 0.85 : c.rd.w * 0.25;   // one-way: spread over its lanes; two-way: keep right
     const x = _rp[0] - fz * lane, z = _rp[1] + fx * lane;      // keep right
     const ty = Math.atan2(-fx, -fz);
     if (!c.init) { c.yaw = ty; c.init = true; } else { let dy = ty - c.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); c.yaw += dy * Math.min(1, dt * 6); }
@@ -5560,7 +5580,7 @@ function rcLandmarks() {
 }
 async function rcLandmarkModels() {
   let GL;
-  try { ({ GLTFLoader: GL } = await import(ADDON('GLTFLoader').replace('postprocessing/GLTFLoader', 'loaders/GLTFLoader'))); } catch (e) { console.warn('GLTFLoader unavailable', e); return; }
+  try { ({ GLTFLoader: GL } = await import(ADDON('GLTFLoader').replace('postprocessing/GLTFLoader', 'loaders/GLTFLoader'))); } catch (e) { console.warn('GLTFLoader unavailable', e); RC.bootDone = true; return; }
   const K = { BHR_Lights: 2.6, BFB_CableLights: 2.8, BFB_Aviation: 4, BFB_Lamp: 2.2, PMA_Lamp: 2.2,
     CC_LibGable_Glow: 1.4, CC_Spire_Glow: 2.4, CC_ComCrown_Glow: 2.6, CC_Frost_Glow: 2.2, LP_Jet_Glow: 2.4, LP_Lamp_Glow: 2.6, LP_SaucerGlass_Glow: 1.8,
     IH_Clock_Glow: 2.6, IH_Steeple_Glow: 1.1, TS_Portico_Glow: 2.0 };
@@ -5776,7 +5796,7 @@ const RC_TRM = (() => {
   for (const P of RC_TRENCH) for (let i = 0; i < P.length; i += 2) { x0 = Math.min(x0, P[i]); x1 = Math.max(x1, P[i]); z0 = Math.min(z0, P[i + 1]); z1 = Math.max(z1, P[i + 1]); }
   x0 -= 40; x1 += 40; z0 -= 40; z1 += 40;
   const S = 1, W = Math.ceil((x1 - x0) / S), H = Math.ceil((z1 - z0) / S), cv = document.createElement('canvas'); cv.width = W; cv.height = H;
-  const c = cv.getContext('2d'); c.fillStyle = '#000'; c.fillRect(0, 0, W, H); c.strokeStyle = '#fff'; c.lineWidth = 2 * (RC_TR_HW + 14) / S; c.lineCap = 'round'; c.lineJoin = 'round';
+  const c = cv.getContext('2d'); c.fillStyle = '#000'; c.fillRect(0, 0, W, H); c.strokeStyle = '#fff'; c.lineWidth = 2 * (RC_TR_HW + 14 * 1.2) / S;   // the two-pass box erosion eats ~14·(cos+sin) on the ~10° bands, so grow a little more c.lineCap = 'round'; c.lineJoin = 'round';
   for (const P of RC_TRENCH) { c.beginPath(); for (let i = 0; i < P.length; i += 2) { const X = (P[i] - x0) / S, Y = (P[i + 1] - z0) / S; i ? c.lineTo(X, Y) : c.moveTo(X, Y); } c.stroke(); }
   // close the gaps: grow every stroke by G then erode by G, so the median between the two carriageways is cut too but nothing outward is
   const G = 14, img = c.getImageData(0, 0, W, H), D = img.data, A = new Uint8Array(W * H), Bf = new Uint16Array(W * H);
@@ -5797,7 +5817,7 @@ function rcTerrainCut(m) {   // terrain fragments over the trench are discarded 
     sh.uniforms.uTrMask = { value: RC_TRM.tex }; sh.uniforms.uTrMin = { value: new THREE.Vector2(RC_TRM.x0, RC_TRM.z0) }; sh.uniforms.uTrSize = { value: new THREE.Vector2(...RC_TRM.size) };
     sh.vertexShader = 'varying vec3 vTrW;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n  vTrW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.fragmentShader = 'varying vec3 vTrW;\nuniform sampler2D uTrMask; uniform vec2 uTrMin, uTrSize;\n' + sh.fragmentShader.replace('#include <clipping_planes_fragment>',
-      '#include <clipping_planes_fragment>\n  { vec2 tuv = (vTrW.xz - uTrMin) / uTrSize; if (tuv.x > 0.0 && tuv.x < 1.0 && tuv.y > 0.0 && tuv.y < 1.0 && texture2D(uTrMask, tuv).r > 0.5 && vTrW.x > -1175.0 && vTrW.x < 965.0) discard; }');
+      '#include <clipping_planes_fragment>\n  { vec2 tuv = (vTrW.xz - uTrMin) / uTrSize; if (tuv.x > 0.0 && tuv.x < 1.0 && tuv.y > 0.0 && tuv.y < 1.0 && texture2D(uTrMask, tuv).r > 0.5 && vTrW.x > -1179.0 && vTrW.x < 969.0) discard; }');
   };
   m.needsUpdate = true;
 }
@@ -5816,7 +5836,7 @@ function rcTrenchDeck(t, P, n, Y, w) {   // cross-street bridges over the cut: a
   if (B.nv) { const m = B.mesh(RC.trMat); m.castShadow = true; scene.add(m); t.meshes.push(m); }
 }
 function rcTrenchWalls(t, P, n, Y, w) {   // retaining walls on the outer edges of the cut (skipped where another carriageway's cut continues)
-  if (!RC.trMat) RC.trMat = new THREE.MeshStandardMaterial({ color: '#8f8b84', roughness: 0.95, metalness: 0, side: THREE.DoubleSide });
+  if (!RC.trMat) RC.trMat = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 0.95, metalness: 0, side: THREE.DoubleSide });
   if (!RC.trFloor) {   // one concrete floor over the whole cut, built from the mask at 3 m
     const M = RC_TRM, B = new RCBuf(), col = new THREE.Color('#9a958c'), q = 3, fy = (x, z) => rcH(x, z) - rcTrenchD(x) - 0.3;
     for (let z = M.z0; z < M.z0 + M.H * M.S; z += q) for (let x = M.x0; x < M.x0 + M.W * M.S; x += q) {
@@ -5825,7 +5845,7 @@ function rcTrenchWalls(t, P, n, Y, w) {   // retaining walls on the outer edges 
     }
     RC.trFloor = B.mesh(RC.trMat); RC.trFloor.receiveShadow = true; scene.add(RC.trFloor);
   }
-  const B = new RCBuf(), col = new THREE.Color('#ffffff'), off = RC_TR_HW - 0.5;
+  const B = new RCBuf(), col = new THREE.Color('#8f8b84'), off = RC_TR_HW - 0.5;
   for (let i = 0; i < n - 1; i++) {
     const ax = P[2 * i], az = P[2 * i + 1], bx = P[2 * i + 2], bz = P[2 * i + 3], L = Math.hypot(bx - ax, bz - az); if (L < 0.1) continue;
     const nx = -(bz - az) / L, nz = (bx - ax) / L;
@@ -5835,6 +5855,7 @@ function rcTrenchWalls(t, P, n, Y, w) {   // retaining walls on the outer edges 
       const ya = Y[i] - 0.4, yb = Y[i + 1] - 0.4, ta = rcH(px, pz) + 0.25, tb = rcH(qx, qz) + 0.25;
       if (ta - ya < 0.3 && tb - yb < 0.3) continue;
       B.quad([px, ya, pz], [qx, yb, qz], [qx, tb, qz], [px, ta, pz], col);
+      rcAddCol(t.cols, (px + qx) / 2, (pz + qz) / 2, L / 2 + 0.3, 0.45, Math.atan2(-(qz - pz), qx - px), Math.max(ta, tb) + 0.5, Math.min(ya, yb) - 1);   // cars can't climb out sideways
     }
   }
   if (B.nv) { const m = B.mesh(RC.trMat); m.castShadow = false; scene.add(m); t.meshes.push(m); }
@@ -5970,10 +5991,10 @@ const RC_STORE_P = { cc: 0.75, south: 0.8, north: 0.65, ne: 0.6, west: 0.55, gto
 const RC_SIGN = ['#7a1f1f', '#1f3a5a', '#2d4a2f', '#1c1c1e', '#c9a227', '#5a2d5a', '#b8452a', '#e8e2d4', '#20545a'].map(h => new THREE.Color(h));
 const RC_AWN = ['#8a1e22', '#1e5a32', '#1f3a66', '#2a2a2c', '#a8742a', '#6a1f4a', '#3a6a7a'].map(h => new THREE.Color(h));
 const _sg = new THREE.Color('#ffffff'), _sk = new THREE.Color('#3a3634');
-RC._sb = new Map();
-function rcStoreBuf(cx, cz) { const k = (Math.floor(cx / 1200) + 64) * 256 + (Math.floor(cz / 1200) + 64); let b = RC._sb.get(k); if (!b) RC._sb.set(k, b = new RCBuf()); return b; }
+function rcStoreBuf(SBM, cx, cz) { const k = (Math.floor(cx / 1200) + 64) * 256 + (Math.floor(cz / 1200) + 64); let b = SBM.get(k); if (!b) SBM.set(k, b = new RCBuf()); return b; }
 function rcStoreMat() {   // shop glass: dark reflective by day, warm interior glow that the night sky brings up
-  return RC.sfMat || (RC.sfMat = new THREE.MeshStandardMaterial({ color: '#20262c', roughness: 0.15, metalness: 0.6, emissive: '#ffc983', emissiveIntensity: 0.55, vertexColors: false }));
+  if (!RC.sfMat) { RC.sfMat = new THREE.MeshStandardMaterial({ color: '#2a3138', roughness: 0.12, metalness: 0.7, emissive: '#ffbf73', emissiveIntensity: 0.9 * (lampLevel || 0) }); GLOW.push({ m: RC.sfMat, k: 0.9 }); }
+  return RC.sfMat;
 }
 const RC_PITCH_P = { gtown: 0.72, manayunk: 0.5, ne: 0.45, west: 0.22, north: 0.06, south: 0.02, cc: 0.0 };
 // growable vertex buffer per style
@@ -6007,7 +6028,7 @@ class RCBuf {
 const _cw = new THREE.Color(), _cr = new THREE.Color(), _cc = new THREE.Color(), _cg = new THREE.Color();
 function* rcBuildings(t, d) {
   // buffers per (style, 1.2 km cell) so the camera and shadow frusta can cull parts of a tile
-  const SM = rcStyleMats(), BM = new Map(), DM = new Map(); let DB = null, RG = null; RC._ts = performance.now(); RC.phase = 'bld';
+  const SM = rcStyleMats(), BM = new Map(), DM = new Map(), SBM = new Map(); let DB = null, RG = null; RC._ts = performance.now(); RC.phase = 'bld';
   const cellK = (cx, cz) => (Math.floor(cx / 1200) + 64) * 256 + (Math.floor(cz / 1200) + 64);
   const getB = (s, cx, cz) => { const k = s * 65536 + cellK(cx, cz); let b = BM.get(k); if (!b) BM.set(k, b = new RCBuf()); b.s = s; return b; };
   const getD = (cx, cz) => { const k = cellK(cx, cz); let b = DM.get(k); if (!b) DM.set(k, b = new RCBuf()); return b; };
@@ -6126,12 +6147,12 @@ function* rcBuildings(t, d) {
         const i = rev ? n - 1 - q : q, j = rev ? (i - 1 + n) % n : (i + 1) % n;
         const dx = xs[j] - xs[i], dz = zs[j] - zs[i], L = Math.hypot(dx, dz); if (L < 4 || L > 40) continue;
         const nx = -dz / L, nz = dx / L, mx = (xs[i] + xs[j]) / 2, mz = (zs[i] + zs[j]) / 2, nr = rcNearRoad(RG, mx + nx * 5, mz + nz * 5); if (!nr || nr[1][4] < 12) continue;
-        const dd = Math.hypot(nr[2] - mx, nr[3] - mz); if (dd > nr[1][4] / 2 + 6 || ((nr[2] - mx) * nx + (nr[3] - mz) * nz) < 0.6 * dd) continue;
+        const dd = Math.hypot(nr[2] - mx, nr[3] - mz); if (dd > nr[1][4] / 2 + 9.5 || ((nr[2] - mx) * nx + (nr[3] - mz) * nz) < 0.6 * dd) continue;
         const sg = nr[1], sl = Math.hypot(sg[2] - sg[0], sg[3] - sg[1]) || 1; if (Math.abs((dx * (sg[2] - sg[0]) + dz * (sg[3] - sg[1])) / (L * sl)) < 0.85) continue;
         if (!best || dd < best[0]) best = [dd, i, L, nx, nz, dx / L, dz / L];
       }
       if (best) {
-        const [, i, L, nx, nz, ex, ez] = best, ax = xs[i], az = zs[i], yg = rcH(ax + ex * L / 2 + nx * 1.5, az + ez * L / 2 + nz * 1.5) + 0.05, SB = rcStoreBuf(cx, cz);
+        const [, i, L, nx, nz, ex, ez] = best, ax = xs[i], az = zs[i], yg = rcH(ax + ex * L / 2 + nx * 1.5, az + ez * L / 2 + nz * 1.5) + 0.05, SB = rcStoreBuf(SBM, cx, cz);
         const bays = Math.max(1, Math.round(L / 6.5)), bw = L / bays, sc = RC_SIGN[Math.floor(rcHash(b * 71 + 2) * RC_SIGN.length) % RC_SIGN.length];
         for (let k2 = 0; k2 < bays; k2++) {
           const a0 = k2 * bw + 0.35, a1 = (k2 + 1) * bw - 0.35;
@@ -6154,8 +6175,7 @@ function* rcBuildings(t, d) {
   const out = []; RC.phase = 'bmesh';
   for (const bf of BM.values()) if (bf.nv) { const m = bf.mesh(SM[bf.s]); scene.add(m); t.meshes.push(m); out.push(m); yield; RC._ts = performance.now(); }
   for (const bf of DM.values()) if (bf.nv) { const m = bf.mesh(rcDetailMat()); scene.add(m); t.meshes.push(m); yield; }
-  for (const bf of RC._sb.values()) if (bf.nv) { const m = bf.mesh(rcStoreMat()); m.castShadow = false; scene.add(m); t.meshes.push(m); yield; }
-  RC._sb.clear();
+  for (const bf of SBM.values()) if (bf.nv) { const m = bf.mesh(rcStoreMat()); m.castShadow = false; scene.add(m); t.meshes.push(m); yield; }
   yield* rcStreetTrees(t, d);
 }
 const rcNy = Q => { const ux = Q[1][0] - Q[0][0], uy = Q[1][1] - Q[0][1], uz = Q[1][2] - Q[0][2], vx = Q[3][0] - Q[0][0], vy = Q[3][1] - Q[0][1], vz = Q[3][2] - Q[0][2]; return uz * vx - ux * vz; };
@@ -6354,10 +6374,16 @@ window.__stepStats = {};
 { const _p = rcPump; rcPump = function (budget) {
   const t0 = performance.now();
   while (performance.now() - t0 < budget) {
-    if (!RC.job) { if (!RC.queue.length) return; RC.queue.sort((a, b) => Math.hypot(a[0].ox - P.pos.x, -a[0].oy - P.pos.z) - Math.hypot(b[0].ox - P.pos.x, -b[0].oy - P.pos.z)); const [t, d] = RC.queue.shift(); if (RC.tiles.get(t.f) !== t) continue; RC.job = rcBuild(t, d); }
+    if (RC.job && RC.jobT && RC.tiles.get(RC.jobT.f) !== RC.jobT) {   // the tile was dropped mid-build: stop the generator and free what it already made
+      try { RC.job.return(); } catch (e) {}
+      const t = RC.jobT; for (const m of t.meshes) { scene.remove(m); if (m.isInstancedMesh) m.dispose(); if (!m.userData.keepGeo) m.geometry.dispose(); } t.meshes.length = 0;
+      rcDropCols(t.cols); for (const r of t.roads) { RC.roads.delete(r); for (const e of [r.k0, r.k1]) { const a = RC.ends.get(e); if (a) { const i = a.indexOf(r); if (i >= 0) a.splice(i, 1); } } r.dead = true; }
+      RC.job = RC.jobT = null; continue;
+    }
+    if (!RC.job) { if (!RC.queue.length) return; const [qx, qz] = rcStreamC(); RC.queue.sort((a, b) => Math.hypot(a[0].ox - qx, -a[0].oy - qz) - Math.hypot(b[0].ox - qx, -b[0].oy - qz)); const [t, d] = RC.queue.shift(); if (RC.tiles.get(t.f) !== t) continue; RC.job = rcBuild(t, d); RC.jobT = t; }
     const ph = RC.phase || '?', t1 = performance.now(); const done = RC.job.next().done; const dt = performance.now() - t1;
     const S = window.__stepStats[ph] || (window.__stepStats[ph] = { n: 0, max: 0 }); S.n++; if (dt > S.max) S.max = Math.round(dt);
-    if (done) RC.job = null;
+    if (done) RC.job = RC.jobT = null;
   }
 }; }
 
