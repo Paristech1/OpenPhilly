@@ -4942,7 +4942,7 @@ function rcStrip(arr, P, n, cum, Yc, o) {
     let dx, dz;
     if (i === 0) { dx = P[2] - P[0]; dz = P[3] - P[1]; } else if (i === n - 1) { dx = P[2 * i] - P[2 * i - 2]; dz = P[2 * i + 1] - P[2 * i - 1]; }
     else { const ax = P[2 * i] - P[2 * i - 2], az = P[2 * i + 1] - P[2 * i - 1], bx = P[2 * i + 2] - P[2 * i], bz = P[2 * i + 3] - P[2 * i + 1]; const la = Math.hypot(ax, az) || 1, lb = Math.hypot(bx, bz) || 1; dx = ax / la + bx / lb; dz = az / la + bz / lb; }
-    const l = Math.hypot(dx, dz) || 1; NX[i] = -dz / l; NZ[i] = dx / l; MT[i] = Math.min(1.5, 2 / Math.max(l, 1.3333));
+    const l = Math.hypot(dx, dz) || 1; NX[i] = -dz / l; NZ[i] = dx / l; MT[i] = i === 0 || i === n - 1 ? 1 : Math.min(1.5, 2 / Math.max(l, 1.3333));   // ends use the raw segment vector, so only interior joins get the mitre factor (2-point ways used to pinch to a point)
   }
   const b1 = o.endCol >= 0 && L > 2 * o.endLen + 6 ? o.endLen : -1, b2 = L - b1;
   const colAt = s => b1 > 0 && (s < b1 || s > b2) ? o.endCol : o.col;
@@ -5137,9 +5137,9 @@ function* rcBuild(t, d) {
       for (let i = 0; i < n; i++) Y[i] = Math.max(ya + (yb - ya) * cum[i] / Lb, rcH(P[2 * i], P[2 * i + 1]) + lift);
       rcBridgeClearance(P, n, cum, Y, w);
     } else Y = rcProfile(P, n, cum, lift);
-    if (tr) for (let i = 0; i < n; i++) Y[i] -= rcTrenchD(P[2 * i]);
+    if (tr) for (let i = 0; i < n; i++) Y[i] -= rcTrenchD(P[2 * i], P[2 * i + 1]);
     let trEdge = false;
-    if (!tr && !(fl & 1) && c <= 4) { let k = 0; for (let i = 0; i < n; i++) if (rcTrenchAt(P[2 * i], P[2 * i + 1])) k++; if (k) { rcMarkBridge(P, n, w / 2, Y); trEdge = Math.abs(P[2 * n - 2] - P[0]) > Math.abs(P[2 * n - 1] - P[1]); if (!trEdge) { if (!RC.trMat) RC.trMat = new THREE.MeshStandardMaterial({ color: '#8f8b84', roughness: 0.95, metalness: 0, side: THREE.DoubleSide }); rcTrenchDeck(t, P, n, Y, w); } } }   // cross streets over the trench are decks; the frontage lanes along its lip lose their inner kerb
+    if (!tr && !(fl & 1) && c <= 4) { let k = 0; for (let i = 0; i < n; i++) if (rcTrenchAt(P[2 * i], P[2 * i + 1])) k++; if (k) { rcMarkBridge(P, n, w / 2, Y); { const ewW = Math.abs(P[2 * n - 2] - P[0]) > Math.abs(P[2 * n - 1] - P[1]); trEdge = ewW === rcTrenchEW(P[0], P[1]); } if (!trEdge) { if (!RC.trMat) RC.trMat = new THREE.MeshStandardMaterial({ color: '#8f8b84', roughness: 0.95, metalness: 0, side: THREE.DoubleSide }); rcTrenchDeck(t, P, n, Y, w); } } }   // cross streets over the trench are decks; the frontage lanes along its lip lose their inner kerb
     const hide = (fl & 1) && RC.deckFn && RC.deckFn(P[(n >> 1) * 2], P[(n >> 1) * 2 + 1]) !== null;   // only the kit Ben Franklin deck replaces OSM bridge ways   // kit bridge deck replaces OSM's
     if (hide) { if (RC.deckFn) for (let i = 0; i < n; i++) { const d = RC.deckFn(P[2 * i], P[2 * i + 1]); if (d !== null) Y[i] = d; } rcMarkBridge(P, n, w / 2, Y); if (performance.now() - (RC._ts || 0) > 4) { yield; RC._ts = performance.now(); } continue; }
     const brg = (fl & 1) || tr ? 1 : 0, SW = brg || trEdge ? 0 : [0, 2.4, 2.1, 1.8, 0, 0, 0][c];
@@ -5230,7 +5230,7 @@ isWater = (x, z) => { if (!RC.water) return false; const c = rcCell(x, z); retur
 const rcDeck = (x, z) => { if (!RC.bridge) return null; const c = rcCell(x, z); return c >= 0 && RC.bridge[c] ? RC.deck[c] / 10 : null; };
 streetSurfaceY = (x, z) => rcH(x, z) + 0.34;
 gradeSurfaceY = (x, z) => rcH(x, z) + 0.02;
-groundAt = (x, z, y) => { const d = rcDeck(x, z); if (rcTrenchAt(x, z)) { const f = rcH(x, z) - rcTrenchD(x) + 0.3; return d !== null && (y === undefined || y > d - 3) ? d + 0.05 : f; } const t = rcH(x, z) + 0.3; return d !== null && d > t && (y === undefined || y > d - 6) ? d + 0.05 : t; };
+groundAt = (x, z, y) => { const d = rcDeck(x, z), mv = rcTrMaskV(x, z); if (mv > 100) { const f = rcH(x, z) - rcTrenchD(x, z) + 0.3; if (d !== null && (y === undefined || y > d - 3)) return d + 0.05; if (mv === 140 && (y === undefined || y > f + 4.5)) return rcH(x, z) + 0.3; return f; } const t = rcH(x, z) + 0.3; return d !== null && d > t && (y === undefined || y > d - 6) ? d + 0.05 : t; };
 topAt = (x, z) => { const t = rcH(x, z), d = rcDeck(x, z); return d !== null ? Math.max(t, d) : t; };
 blockedSolid = () => false;
 walkable = (x, z, y) => {
@@ -5788,36 +5788,56 @@ function rcNearPlane() {
 // a mask cuts the terrain over the trench, retaining walls line its edges, and the cross streets stay at grade as decks.
 const RC_TRENCH = [[919.2,-503.8,944.1,-511.1,959.2,-515.7,970.7,-519.4],[716.5,-509.4,748.8,-503.4,759.8,-501.4,772.1,-499.6,783.9,-498.0],[726.4,-520.2,718.6,-521.6],[680.7,-528.6,557.8,-549.7,289.7,-594.7,176.4,-613.6,55.0,-634.1],[718.6,-521.6,680.7,-528.6],[678.4,-516.1,716.5,-509.4],[-477.9,-721.7,-513.8,-727.9],[-572.4,-737.4,-611.2,-743.5],[-516.3,-713.4,-480.2,-707.9],[-480.2,-707.9,-442.8,-701.7],[-611.2,-743.5,-646.8,-749.0],[-649.1,-735.2,-613.6,-729.5],[-555.2,-719.7,-516.3,-713.4],[-806.6,-760.3,-649.1,-735.2],[-646.8,-749.0,-803.9,-774.7],[972.9,-530.1,960.1,-525.9,949.5,-522.8,936.5,-519.5,923.8,-516.5,912.6,-514.2,900.5,-512.2,889.3,-510.5,877.1,-509.2,864.5,-508.1,852.8,-507.4,842.4,-507.1,831.9,-507.0,821.2,-507.2,809.4,-507.8,795.8,-508.6,784.6,-509.7,772.8,-510.9,759.6,-512.8,726.4,-520.2],[-230.0,-679.6,-419.7,-711.7],[55.0,-634.1,-4.1,-640.4,-86.4,-651.9,-118.1,-657.0,-147.5,-662.0,-200.0,-671.8,-230.0,-679.6],[463.6,-555.5,531.2,-542.8,678.4,-516.1],[-341.1,-685.6,-272.9,-675.9,-148.6,-654.2,-44.0,-637.3,90.5,-617.4,209.7,-598.0,312.0,-581.7,440.2,-560.1,463.6,-555.5],[-403.3,-695.1,-341.1,-685.6],[783.9,-498.0,797.4,-496.7,809.9,-495.7,820.7,-495.3,833.5,-495.3,845.6,-495.5,857.7,-496.1,869.5,-496.8,882.4,-498.0,895.0,-499.6,906.1,-501.2,919.2,-503.8],[-513.8,-727.9,-552.8,-734.2],[-613.6,-729.5,-574.8,-723.1],[-552.8,-734.2,-572.4,-737.4],[-574.8,-723.1,-555.2,-719.7],[-440.6,-715.2,-477.9,-721.7],[-421.9,-698.1,-403.3,-695.1],[-442.8,-701.7,-421.9,-698.1],[-419.7,-711.7,-440.6,-715.2],[-803.9,-774.7,-818.0,-776.3],[-1180.2,-820.9,-1076.3,-804.0,-967.5,-785.9,-806.6,-760.3],[-818.0,-776.3,-996.9,-804.9,-1179.6,-834.2,-1184.7,-835.0]];
 const RC_TR_HW = 8.5;   // half-width of the cut around each carriageway centreline (13 m strip + shoulders)
-const rcTrKeys = rcKeySet(RC_TRENCH.map(P => [P[0], P[1], P[P.length - 2], P[P.length - 1]]));
+// v18.3: I-95 along Penn's Landing (covered from ~Chestnut St to ~South St, open cuts at each end) uses the same machinery
+const RC_TR95 = [[1849.4, 294.5, 1852.7, 296.3, 1855.2, 297.8, 1857.4, 299.3, 1859.2, 301.0, 1860.9, 302.5, 1862.4, 304.5, 1863.4, 306.8, 1864.2, 309.8, 1864.4, 312.8, 1863.9, 317.0, 1863.4, 322.5, 1843.9, 458.8], [1759.7, 1067.8, 1762.9, 1093.8, 1746.9, 1272.0, 1745.2, 1288.8, 1736.4, 1368.0], [1902.4, 347.3, 1909.4, 265.5, 1922.4, 181.5, 1924.4, 169.0, 1926.2, 156.8, 1927.7, 144.8, 1929.2, 132.8, 1929.9, 120.3, 1930.4, 108.8, 1930.9, 97.0, 1931.2, 84.0, 1931.2, 69.8, 1931.2, 58.0, 1931.2, -63.0], [1899.2, -139.7, 1905.4, -39.5, 1906.9, -15.5, 1907.7, 8.3, 1907.9, 33.3, 1907.4, 57.0, 1905.9, 81.0, 1903.7, 106.0, 1900.9, 129.8, 1864.4, 408.3, 1859.7, 449.3], [1807.4, 776.5, 1772.7, 989.8], [1794.7, 993.3, 1828.9, 779.8], [1828.9, 779.8, 1850.2, 649.8], [1772.7, 989.8, 1759.7, 1067.8], [1850.2, 649.8, 1880.9, 464.5], [1902.4, 347.3, 1919.7, 263.8, 1930.4, 208.0, 1932.4, 196.3, 1934.4, 184.3, 1936.7, 172.0, 1938.2, 160.5, 1939.9, 148.0, 1940.9, 136.3, 1942.2, 123.8, 1943.2, 111.3, 1944.2, 99.3, 1944.7, 87.8, 1944.9, 75.3, 1944.9, 63.3, 1944.9, 38.8], [1828.7, 646.0, 1807.4, 776.5], [1857.7, 461.0, 1828.7, 646.0], [1792.7, 774.3, 1758.2, 987.5], [1843.9, 458.8, 1813.9, 643.5], [1813.9, 643.5, 1792.7, 774.3], [1859.7, 449.3, 1857.7, 461.0], [1880.9, 464.5, 1902.4, 347.3], [1916.4, 123.8, 1874.9, 389.8], [1788.9, 1031.8, 1794.7, 993.3], [1874.9, 389.8, 1872.7, 400.8, 1862.2, 438.3, 1859.7, 449.3], [1850.2, 1193.0, 1839.9, 1192.8, 1830.2, 1192.5]];
+const rcTrKeys = rcKeySet([...RC_TRENCH, ...RC_TR95].map(P => [P[0], P[1], P[P.length - 2], P[P.length - 1]]));
 const rcIsTrench = (P0, n0) => rcWayIn(rcTrKeys, P0, n0);
-const rcTrenchD = x => 6.8 * Math.min(1, Math.max(0, (x + 1190) / 150)) * Math.min(1, Math.max(0, (980 - x) / 150));
-const RC_TRM = (() => {
+const rcClamp01 = v => Math.min(1, Math.max(0, v));
+function rcTrenchD(x, z) {
+  if (z < -300) return 6.8 * rcClamp01((x + 1190) / 150) * rcClamp01((980 - x) / 150);   // Vine St (I-676)
+  if (x > 1500) return 7 * rcClamp01((z - 200) / 150) * rcClamp01((1250 - z) / 160);      // I-95 at Penn's Landing
+  return 0;
+}
+const rcTrenchCov = (x, z) => x > 1500 && z > 347 && z < 1068;   // OSM tunnel: roofed over (cap park / Columbus Blvd above)
+const rcTrenchEW = (x, z) => z < -300;                             // Vine St runs east-west, I-95 north-south
+function rcBuildTrMask(LINES) {
   let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
-  for (const P of RC_TRENCH) for (let i = 0; i < P.length; i += 2) { x0 = Math.min(x0, P[i]); x1 = Math.max(x1, P[i]); z0 = Math.min(z0, P[i + 1]); z1 = Math.max(z1, P[i + 1]); }
+  for (const P of LINES) for (let i = 0; i < P.length; i += 2) { x0 = Math.min(x0, P[i]); x1 = Math.max(x1, P[i]); z0 = Math.min(z0, P[i + 1]); z1 = Math.max(z1, P[i + 1]); }
   x0 -= 40; x1 += 40; z0 -= 40; z1 += 40;
   const S = 1, W = Math.ceil((x1 - x0) / S), H = Math.ceil((z1 - z0) / S), cv = document.createElement('canvas'); cv.width = W; cv.height = H;
-  const c = cv.getContext('2d'); c.fillStyle = '#000'; c.fillRect(0, 0, W, H); c.strokeStyle = '#fff'; c.lineWidth = 2 * (RC_TR_HW + 14 * 1.2) / S;   // the two-pass box erosion eats ~14·(cos+sin) on the ~10° bands, so grow a little more c.lineCap = 'round'; c.lineJoin = 'round';
-  for (const P of RC_TRENCH) { c.beginPath(); for (let i = 0; i < P.length; i += 2) { const X = (P[i] - x0) / S, Y = (P[i + 1] - z0) / S; i ? c.lineTo(X, Y) : c.moveTo(X, Y); } c.stroke(); }
-  // close the gaps: grow every stroke by G then erode by G, so the median between the two carriageways is cut too but nothing outward is
+  const c = cv.getContext('2d'); c.fillStyle = '#000'; c.fillRect(0, 0, W, H); c.strokeStyle = '#fff'; c.lineWidth = 2 * (RC_TR_HW + 14 * 1.2) / S; c.lineCap = 'round'; c.lineJoin = 'round';   // the two-pass box erosion eats ~14·(cos+sin) on angled bands, so grow a little more
+  for (const P of LINES) { c.beginPath(); for (let i = 0; i < P.length; i += 2) { const X = (P[i] - x0) / S, Y = (P[i + 1] - z0) / S; i ? c.lineTo(X, Y) : c.moveTo(X, Y); } c.stroke(); }
+  // close the gaps: grow every stroke by G then erode by G, so the median between the carriageways is cut too but nothing outward is
   const G = 14, img = c.getImageData(0, 0, W, H), D = img.data, A = new Uint8Array(W * H), Bf = new Uint16Array(W * H);
   for (let k = 0; k < W * H; k++) A[k] = D[4 * k] > 127 ? 1 : 0;
-  for (let j = 0; j < H; j++) { let run = 0; const o = j * W; for (let i = 0; i < W; i++) { run = A[o + i] ? Math.min(run + 1, 60000) : 0; Bf[o + i] = run; } }   // horizontal erosion
+  for (let j = 0; j < H; j++) { let run = 0; const o = j * W; for (let i = 0; i < W; i++) { run = A[o + i] ? Math.min(run + 1, 60000) : 0; Bf[o + i] = run; } }
   for (let j = 0; j < H; j++) { const o = j * W; let next = 1e9; for (let i = W - 1; i >= 0; i--) { next = A[o + i] ? next + 1 : 0; A[o + i] = Math.min(Bf[o + i], next > 1e8 ? 1e9 : next) > G ? 1 : 0; } }
-  for (let i = 0; i < W; i++) { let run = 0; for (let j = 0; j < H; j++) { const k = j * W + i; run = A[k] ? run + 1 : 0; Bf[k] = run; } let nx = 0; for (let j = H - 1; j >= 0; j--) { const k = j * W + i; nx = A[k] ? nx + 1 : 0; D[4 * k] = D[4 * k + 1] = D[4 * k + 2] = Math.min(Bf[k], nx) > G ? 255 : 0; D[4 * k + 3] = 255; } }
+  for (let i = 0; i < W; i++) {
+    let run = 0; for (let j = 0; j < H; j++) { const k = j * W + i; run = A[k] ? Math.min(run + 1, 60000) : 0; Bf[k] = run; }
+    let nx = 0; for (let j = H - 1; j >= 0; j--) {
+      const k = j * W + i; nx = A[k] ? nx + 1 : 0; let v = Math.min(Bf[k], nx) > G ? 255 : 0;
+      if (v) { const x = x0 + (i + 0.5) * S, z = z0 + (j + 0.5) * S; v = rcTrenchD(x, z) < 0.5 ? 0 : rcTrenchCov(x, z) ? 140 : 255; }   // 255 open cut, 140 roofed, 0 at grade
+      D[4 * k] = D[4 * k + 1] = D[4 * k + 2] = v; D[4 * k + 3] = 255;
+    }
+  }
   c.putImageData(img, 0, 0);
   const tex = new THREE.CanvasTexture(cv); tex.flipY = false; tex.minFilter = tex.magFilter = THREE.NearestFilter; tex.generateMipmaps = false;
   return { x0, z0, S, W, H, D, tex, size: [x1 - x0, z1 - z0] };
-})();
-function rcTrenchAt(x, z) {
-  const M = RC_TRM, i = Math.floor((x - M.x0) / M.S), j = Math.floor((z - M.z0) / M.S);
-  return i >= 0 && j >= 0 && i < M.W && j < M.H && M.D[4 * (j * M.W + i)] > 127 && rcTrenchD(x) > 0.5;
 }
-function rcTerrainCut(m) {   // terrain fragments over the trench are discarded so the lowered expressway shows through
+const RC_TRMS = [rcBuildTrMask(RC_TRENCH), rcBuildTrMask(RC_TR95)];
+function rcTrMaskV(x, z) {
+  for (const M of RC_TRMS) { const i = Math.floor((x - M.x0) / M.S), j = Math.floor((z - M.z0) / M.S); if (i >= 0 && j >= 0 && i < M.W && j < M.H) { const v = M.D[4 * (j * M.W + i)]; if (v) return v; } }
+  return 0;
+}
+const rcTrenchAt = (x, z) => rcTrMaskV(x, z) > 100;
+function rcTerrainCut(m) {   // terrain fragments over open cuts are discarded so the lowered expressway shows through (roofed parts keep the ground)
   m.onBeforeCompile = sh => {
-    sh.uniforms.uTrMask = { value: RC_TRM.tex }; sh.uniforms.uTrMin = { value: new THREE.Vector2(RC_TRM.x0, RC_TRM.z0) }; sh.uniforms.uTrSize = { value: new THREE.Vector2(...RC_TRM.size) };
+    const M0 = RC_TRMS[0], M1 = RC_TRMS[1];
+    sh.uniforms.uTrM0 = { value: M0.tex }; sh.uniforms.uTrA0 = { value: new THREE.Vector2(M0.x0, M0.z0) }; sh.uniforms.uTrS0 = { value: new THREE.Vector2(...M0.size) };
+    sh.uniforms.uTrM1 = { value: M1.tex }; sh.uniforms.uTrA1 = { value: new THREE.Vector2(M1.x0, M1.z0) }; sh.uniforms.uTrS1 = { value: new THREE.Vector2(...M1.size) };
     sh.vertexShader = 'varying vec3 vTrW;\n' + sh.vertexShader.replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n  vTrW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-    sh.fragmentShader = 'varying vec3 vTrW;\nuniform sampler2D uTrMask; uniform vec2 uTrMin, uTrSize;\n' + sh.fragmentShader.replace('#include <clipping_planes_fragment>',
-      '#include <clipping_planes_fragment>\n  { vec2 tuv = (vTrW.xz - uTrMin) / uTrSize; if (tuv.x > 0.0 && tuv.x < 1.0 && tuv.y > 0.0 && tuv.y < 1.0 && texture2D(uTrMask, tuv).r > 0.5 && vTrW.x > -1179.0 && vTrW.x < 969.0) discard; }');
+    sh.fragmentShader = 'varying vec3 vTrW;\nuniform sampler2D uTrM0, uTrM1; uniform vec2 uTrA0, uTrS0, uTrA1, uTrS1;\n' + sh.fragmentShader.replace('#include <clipping_planes_fragment>',
+      '#include <clipping_planes_fragment>\n  { vec2 a = (vTrW.xz - uTrA0) / uTrS0; if (a.x > 0.0 && a.x < 1.0 && a.y > 0.0 && a.y < 1.0 && texture2D(uTrM0, a).r > 0.75) discard;\n    vec2 b = (vTrW.xz - uTrA1) / uTrS1; if (b.x > 0.0 && b.x < 1.0 && b.y > 0.0 && b.y < 1.0 && texture2D(uTrM1, b).r > 0.75) discard; }');
   };
   m.needsUpdate = true;
 }
@@ -5837,11 +5857,12 @@ function rcTrenchDeck(t, P, n, Y, w) {   // cross-street bridges over the cut: a
 }
 function rcTrenchWalls(t, P, n, Y, w) {   // retaining walls on the outer edges of the cut (skipped where another carriageway's cut continues)
   if (!RC.trMat) RC.trMat = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 0.95, metalness: 0, side: THREE.DoubleSide });
-  if (!RC.trFloor) {   // one concrete floor over the whole cut, built from the mask at 3 m
-    const M = RC_TRM, B = new RCBuf(), col = new THREE.Color('#9a958c'), q = 3, fy = (x, z) => rcH(x, z) - rcTrenchD(x) - 0.3;
-    for (let z = M.z0; z < M.z0 + M.H * M.S; z += q) for (let x = M.x0; x < M.x0 + M.W * M.S; x += q) {
+  if (!RC.trFloor) {   // one concrete floor over every cut (and a ceiling where it is roofed), built from the masks at 3 m
+    const B = new RCBuf(), col = new THREE.Color('#9a958c'), cc = new THREE.Color('#6f6c66'), q = 3, fy = (x, z) => rcH(x, z) - rcTrenchD(x, z) - 0.3;
+    for (const M of RC_TRMS) for (let z = M.z0; z < M.z0 + M.H * M.S; z += q) for (let x = M.x0; x < M.x0 + M.W * M.S; x += q) {
       if (!(rcTrenchAt(x, z) || rcTrenchAt(x + q, z) || rcTrenchAt(x, z + q) || rcTrenchAt(x + q, z + q))) continue;
       B.quad([x, fy(x, z), z], [x, fy(x, z + q), z + q], [x + q, fy(x + q, z + q), z + q], [x + q, fy(x + q, z), z], col);
+      if (rcTrMaskV(x + q / 2, z + q / 2) === 140) { const cy = (x, z) => Math.min(fy(x, z) + 6.6, rcH(x, z) - 0.15); B.quad([x + q, cy(x + q, z), z], [x + q, cy(x + q, z + q), z + q], [x, cy(x, z + q), z + q], [x, cy(x, z), z], cc); }
     }
     RC.trFloor = B.mesh(RC.trMat); RC.trFloor.receiveShadow = true; scene.add(RC.trFloor);
   }
@@ -5855,7 +5876,7 @@ function rcTrenchWalls(t, P, n, Y, w) {   // retaining walls on the outer edges 
       const ya = Y[i] - 0.4, yb = Y[i + 1] - 0.4, ta = rcH(px, pz) + 0.25, tb = rcH(qx, qz) + 0.25;
       if (ta - ya < 0.3 && tb - yb < 0.3) continue;
       B.quad([px, ya, pz], [qx, yb, qz], [qx, tb, qz], [px, ta, pz], col);
-      rcAddCol(t.cols, (px + qx) / 2, (pz + qz) / 2, L / 2 + 0.3, 0.45, Math.atan2(-(qz - pz), qx - px), Math.max(ta, tb) + 0.5, Math.min(ya, yb) - 1);   // cars can't climb out sideways
+      rcAddCol(t.cols, (px + qx) / 2, (pz + qz) / 2, L / 2 + 0.3, 0.45, Math.atan2(-(qz - pz), qx - px), rcTrenchCov((px + qx) / 2, (pz + qz) / 2) ? Math.max(ya, yb) + 6 : Math.max(ta, tb) + 0.5, Math.min(ya, yb) - 1);   // cars can't climb out sideways (roofed: only up to the ceiling, so cars on the cap above pass)
     }
   }
   if (B.nv) { const m = B.mesh(RC.trMat); m.castShadow = false; scene.add(m); t.meshes.push(m); }
