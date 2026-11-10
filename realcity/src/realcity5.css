@@ -1,0 +1,15 @@
+/* v20: on-foot HUD */
+#prompt{left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));padding:8px 14px 8px 8px;border-radius:12px;display:flex;align-items:center;gap:10px;font:500 13px var(--body);white-space:nowrap;pointer-events:none}
+#prompt b{display:grid;place-items:center;min-width:26px;height:26px;border-radius:7px;background:var(--acid);color:var(--acid-ink);font:800 15px/1 var(--display)}
+#prompt em{font-style:normal;color:var(--dim);font:500 11px var(--mono)}
+#stam{height:4px;border-radius:3px;background:rgba(255,255,255,.12);margin-top:8px;overflow:hidden}
+#stam i{display:block;height:100%;width:100%;background:var(--acid);transform-origin:right;transition:background .2s}
+#stam.low i{background:#ff6a4d}
+#radar{left:calc(14px + env(safe-area-inset-left,0px));bottom:calc(84px + env(safe-area-inset-bottom,0px));width:168px;height:168px;border-radius:50%;overflow:hidden;padding:0}
+#radar canvas{width:100%;height:100%;display:block;border-radius:50%}
+#footBtns{display:flex;flex-direction:column;gap:8px}
+#footBtns button{width:58px;height:52px;border-radius:14px;font:700 13px var(--display);letter-spacing:.05em}
+#footBtns button.on{background:var(--acid);color:var(--acid-ink)}
+#actBtn{border-color:var(--acid)!important;color:var(--acid)}
+@media (pointer:coarse){#radar{left:auto;right:calc(12px + env(safe-area-inset-right,0px));top:calc(64px + env(safe-area-inset-top,0px));bottom:auto;width:112px;height:112px}#prompt{bottom:auto;top:calc(214px + env(safe-area-inset-top,0px))}}
+@media (pointer:coarse) and (max-width:640px){#radar{top:calc(122px + env(safe-area-inset-top,0px))}}
