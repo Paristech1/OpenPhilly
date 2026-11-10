@@ -7304,6 +7304,36 @@ function r5SigWant(c, want) {
 // generator below only registers nothing, so the kit code stays dormant until the builder lands.
 function* r5Street(t, EL) { t.r5k = new Set(); }
 
+// ================================================================ Walt Whitman Bridge (Blender: tools/build_wwb.py -> data/wwb.wasm)
+// I-76 over the Delaware: 610 m main span, 115 m steel towers, anchorages and approach viaducts. The model replaces OSM's bridge
+// ways; the deck is drivable (bridge raster), with colliders on the parapets, tower legs and median.
+const WWB = Object.assign(LMF(2913.0, 5223.3, 12.45), { UPA: -2003, UNJ: 1242, GPA: 5.8, GNJ: 1.6, TW: 305, AN: 540, HW: 14.6 });
+function wwbDeck(u) {
+  const a = Math.abs(u);
+  if (a <= WWB.TW) return 45 + 3 * (1 - (u / WWB.TW) ** 2);
+  if (a <= WWB.AN) return 45 - (a - WWB.TW) / (WWB.AN - WWB.TW) * 6;
+  if (u < 0) return WWB.GPA + (39 - WWB.GPA) * (u - WWB.UPA) / (-WWB.AN - WWB.UPA);
+  return WWB.GNJ + (39 - WWB.GNJ) * (WWB.UNJ - u) / (WWB.UNJ - WWB.AN);
+}
+{
+  const d0 = RC.deckFn, ex0 = rcExclusion, lm0 = rcLandmarks;
+  RC.deckFn = (x, z) => { const [u, v] = WWB.toLocal(x, z); return u >= WWB.UPA && u <= WWB.UNJ && Math.abs(v) < 17 ? wwbDeck(u) : d0(x, z); };
+  rcExclusion = (x, z) => { const [u, v] = WWB.toLocal(x, z); return u > WWB.UPA + 60 && u < WWB.UNJ - 60 && Math.abs(v) < 19 ? 2 : ex0(x, z); };
+  rcLandmarks = () => {
+    lm0();
+    const add = (u0, u1, v0, v1, top, bottom) => { const [x, z] = WWB.toReal((u0 + u1) / 2, (v0 + v1) / 2); rcAddCol([], x, z, (u1 - u0) / 2, (v1 - v0) / 2, WWB.rot, top, bottom); };
+    for (let u = WWB.UPA; u < WWB.UNJ; u += 40) { const b = Math.min(WWB.UNJ, u + 40), hi = Math.max(wwbDeck(u), wwbDeck(b)), lo = Math.min(wwbDeck(u), wwbDeck(b)); for (const s of [-1, 1]) add(u, b, s * 14.5 - 0.3, s * 14.5 + 0.3, hi + 1.3, lo - 3); add(u, b, -0.35, 0.35, hi + 1.0, lo - 1); }
+    for (const tu of [-WWB.TW, WWB.TW]) for (const s of [-1, 1]) add(tu - 3, tu + 3, s * 16.4 - 2.4, s * 16.4 + 2.4, 118, -6);
+    const iv = setInterval(() => { if (RC.loadModel) { clearInterval(iv); RC.loadModel('wwb'); } }, 400);
+  };
+  // the deck is drivable even before the tiles that carry its OSM ways have streamed in
+  const g0 = groundAt, t0 = topAt, on = (x, z) => { const [u, v] = WWB.toLocal(x, z); return u >= WWB.UPA && u <= WWB.UNJ && Math.abs(v) < 14.3 ? wwbDeck(u) : null; };
+  groundAt = (x, z, y) => { const d = on(x, z); if (d !== null && d > rcH(x, z) + 0.3 && (y === undefined || y > d - 6)) return d + 0.05; return g0(x, z, y); };
+  topAt = (x, z) => { const d = on(x, z), t = t0(x, z); return d !== null ? Math.max(t, d) : t; };
+  const [sx, sz] = WWB.toReal(-760, 150), [lx, lz] = WWB.toReal(120, 0), [dx, dz] = WWB.toReal(-420, 4), [ex, ez] = WWB.toReal(-200, 0);
+  SCENIC.push({ name: 'Walt Whitman Bridge', pos: [sx, 30, sz], look: [lx, 62, lz], fov: 46 }, { name: 'Walt Whitman Bridge (deck)', pos: [dx, wwbDeck(-420) + 2.2, dz], look: [ex, 62, ez], fov: 58 });
+}
+
 boot();
 </script>
 
