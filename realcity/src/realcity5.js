@@ -6,14 +6,14 @@ window.__r5 = {
     if (s && s.pos) { if (!s.abs) { s = { ...s, pos: [s.pos[0], s.pos[1] + rcH(s.pos[0], s.pos[2]), s.pos[2]], look: [s.look[0], s.look[1] + rcH(s.look[0], s.look[2]), s.look[2]] }; } shot(s); camera.position.copy(SHOT.pos); camera.fov = SHOT.fov; camera.updateProjectionMatrix(); camera.lookAt(SHOT.look); }
     else { SHOT = null; if (s && s.q) setQuality(s.q, true); if (s && s.time) setTime(s.time, true); updateRig(0.016); updateCamera(1, performance.now() / 1000); camera.position.copy(camPos); camera.lookAt(camLook); }
     const ld = sun.userData.dir || sunDir; rcSunSnap(SHOT ? SHOT.look : P.pos, ld); rcNearPlane(); rcTreeLOD();
-    sky.position.copy(camera.position);
+    sky.position.copy(camera.position); ST.f = 0; r5StreetLOD(0);
     if (s && s.fast) renderer.render(scene, camera); else if (quality.bloom && composer) composer.render(); else renderer.render(scene, camera);
     return renderer.domElement.toDataURL('image/jpeg', 0.9);
   },
   async load(x, z, r = 900) { const px = P.pos.x, pz = P.pos.z; await rcPreload(x, z, r); },
   go(x, z, yaw, mode) { if (mode) setMode(mode, true); P.pos.set(x, groundAt(x, z, rcH(x, z) + 0.5), z); if (yaw !== undefined) P.yaw = yaw; P.speed = 0; P.vy = 0; cam.yawS = P.yaw; cam.yawOff = 0; RC.pendingTP = null; },
   step(sec, input) { if (input) Object.assign(keys, input); const n = Math.round(sec * 60); for (let i = 0; i < n; i++) { simT += 1 / 60; updateTraffic(1 / 60, simT); updatePlayer(1 / 60); updateRig(1 / 60); updateCamera(1 / 60, simT); } if (input) for (const k in input) keys[k] = false; return [+P.pos.x.toFixed(2), +P.pos.y.toFixed(2), +P.pos.z.toFixed(2), +P.speed.toFixed(2), P.mode]; },
-  ll: (la, lo) => llx(la, lo), P, RC, cam
+  ll: (la, lo) => llx(la, lo), P, RC, cam, ST: () => ST
 };
 
 // ================================================================ ON FOOT (v20)
@@ -578,12 +578,12 @@ function r5Kit() {
   K.carMat.customProgramCacheKey = () => 'r5car';
   const wheels = (wx, wz, r = 0.34) => [[-wx, -wz], [wx, -wz], [-wx, wz], [wx, wz]].map(([x, z]) => [new THREE.CylinderGeometry(r, r, 0.24, 10).rotateZ(Math.PI / 2).translate(x, r, z), '#141414']);
   const CC = { paint: ['#ffffff', 1], accent: ['#3b3d42', 0], glass: ['#0b0f15', 0], dark: ['#131417', 0], chrome: ['#b9bec4', 0], head: ['#dfe3e8', 0], tail: ['#5a0c0c', 0] };
-  K.cars = MODELS.map(m => { const geos = decodeModel(m, 't'), parts = []; for (const [cat, geo] of Object.entries(geos)) { const c = CC[cat] || CC.dark; parts.push([geo, c[0], 0, c[1]]); } const wo = wheelOffsets(m); parts.push(...wheels(wo[1][0], wo[2][1], 0.35)); return r5Merge(parts); });
+  if (ST.parkOn) K.cars = MODELS.map(m => { const geos = decodeModel(m, 't'), parts = []; for (const [cat, geo] of Object.entries(geos)) { const c = CC[cat] || CC.dark; parts.push([geo, c[0], 0, c[1]]); } const wo = wheelOffsets(m); parts.push(...wheels(wo[1][0], wo[2][1], 0.35)); return r5Merge(parts); });
   const low = (len, h1, h2, cab0, cab1) => { const sh = new THREE.Shape(), hl = len / 2; [[-hl, 0.3], [hl, 0.3], [hl, h1 - 0.08], [hl - 0.25, h1], [cab1 + 0.55, h1 + 0.04], [cab1, h2], [cab0, h2], [cab0 - 0.6, h1 + 0.05], [-hl + 0.1, h1], [-hl, h1 - 0.1]].forEach(([x, y], i) => i ? sh.lineTo(x, y) : sh.moveTo(x, y));
     const body = new THREE.ExtrudeGeometry(sh, { depth: 1.84, bevelEnabled: false }).translate(0, 0, -0.92).rotateY(Math.PI / 2);   // nose towards -Z
     const gh = h2 - h1 - 0.12, gl = cab1 - cab0 + 0.5, gm = (cab0 + cab1) / 2;
     return r5Merge([[body, '#ffffff', 0, 1], [B(1.88, gh, gl * 0.82, 0, h1 + 0.1 + gh / 2, -gm), '#0b0f15'], [B(1.5, gh, gl + 0.5, 0, h1 + 0.1 + gh / 2, -gm), '#0b0f15'], [B(1.5, 0.12, 0.05, 0, h1 - 0.2, -hl - 0.01), '#dfe3e8'], [B(1.5, 0.12, 0.05, 0, h1 - 0.15, hl + 0.01), '#6a0e0e'], ...wheels(0.86, len * 0.31)]); };
-  K.low = [low(4.6, 0.88, 1.38, -0.75, 1.05), low(4.8, 1.02, 1.66, -1.0, 1.75)];   // sedan, SUV
+  if (ST.parkOn) K.low = [low(4.6, 0.88, 1.38, -0.75, 1.05), low(4.8, 1.02, 1.66, -1.0, 1.75)];   // sedan, SUV
   return K;
 }
 function r5Lane(c, nl0) {   // lane centre (metres right of the centre line, in the car's own direction) on a street with kerbside parking
@@ -599,9 +599,7 @@ function r5SigWant(c, want) {
   }
   return want;
 }
-// Street furniture build (signals, lamps, parked cars, bridge piers) is staged above but not switched on yet: the per-tile
-// generator below only registers nothing, so the kit code stays dormant until the builder lands.
-function* r5Street(t, EL) { t.r5k = new Set(); }
+
 
 // ================================================================ Walt Whitman Bridge (Blender: tools/build_wwb.py -> data/wwb.wasm)
 // I-76 over the Delaware: 610 m main span, 115 m steel towers, anchorages and approach viaducts. The model replaces OSM's bridge
@@ -631,4 +629,181 @@ function wwbDeck(u) {
   topAt = (x, z) => { const d = on(x, z), t = t0(x, z); return d !== null ? Math.max(t, d) : t; };
   const [sx, sz] = WWB.toReal(-760, 150), [lx, lz] = WWB.toReal(120, 0), [dx, dz] = WWB.toReal(-420, 4), [ex, ez] = WWB.toReal(-200, 0);
   SCENIC.push({ name: 'Walt Whitman Bridge', pos: [sx, 30, sz], look: [lx, 62, lz], fov: 46 }, { name: 'Walt Whitman Bridge (deck)', pos: [dx, wwbDeck(-420) + 2.2, dz], look: [ex, 62, ez], fov: 58 });
+}
+
+// ---------- the per-tile street builder
+const _c = h => new THREE.Color(h), ST_COL = { conc: _c('#aaa59a'), concD: _c('#7d7a73'), concL: _c('#c2bdb1'), steel: _c('#5d6268'), stone: _c('#9a9388') };
+function r5Wall(buf, a, b, ya0, ya1, yb0, yb1, col) { buf.quad([a[0], ya0, a[1]], [b[0], yb0, b[1]], [b[0], yb1, b[1]], [a[0], ya1, a[1]], col); }
+function r5Box(buf, cx, cz, ex, ez, hl, hw, y0, y1, col) {   // box centred at (cx, cz): half-length hl along (ex, ez), half-width hw across
+  const nx = -ez, nz = ex, C = [[-hl, -hw], [hl, -hw], [hl, hw], [-hl, hw]].map(([a, o]) => [cx + ex * a + nx * o, cz + ez * a + nz * o]);
+  for (let q = 0; q < 4; q++) r5Wall(buf, C[q], C[(q + 1) % 4], y0, y1, y0, y1, col);
+  buf.quad([C[0][0], y1, C[0][1]], [C[3][0], y1, C[3][1]], [C[2][0], y1, C[2][1]], [C[1][0], y1, C[1][1]], col); buf.quad([C[0][0], y0, C[0][1]], [C[1][0], y0, C[1][1]], [C[2][0], y0, C[2][1]], [C[3][0], y0, C[3][1]], col);
+}
+function r5SignId(x, z, dx, dz) {
+  let nm = ''; try { nm = rcStreets(x, z, 60).map(s => s.name).join(' '); } catch (e) {}
+  let r = /Vine/i.test(nm) ? 676 : /Schuylkill/i.test(nm) ? 76 : /Delaware Exp|I-? ?95/i.test(nm) ? 95 : /Roosevelt/i.test(nm) ? 1 : 0;
+  if (!r) r = z > -620 && z < -280 && x > -1700 && x < 1900 ? 676 : x > 1300 && z < 4300 ? 95 : x < -900 || z > 4300 ? 76 : 0;
+  if (r === 95) return dz < 0 ? 0 : 1; if (r === 76) return dx + dz < 0 ? 2 : 3; if (r === 676) return dx > 0 ? 4 : 5; if (r === 1) return dz < 0 || dx > 0 ? 6 : 7; return 8;
+}
+function* r5Street(t, EL) {
+  t.r5k = new Set();
+  const K = r5Kit(), buf = new RCBuf(), pp = [], pi = [], sp = [], suv = [], si = [], cells = new Map(), rp = [0, 0, 0, 0, 0, 0], rq = [0, 0, 0, 0, 0, 0];
+  const cell = (x, z) => { const k = Math.floor(x / 400) + ',' + Math.floor(z / 400); let c = cells.get(k); if (!c) cells.set(k, c = { lamp: [], pool: [], mast: [], post: [], stop: [], x: (Math.floor(x / 400) + 0.5) * 400, z: (Math.floor(z / 400) + 0.5) * 400 }); return c; };
+  const slice = function* () { if (rcSlice()) { yield; RC._ts = performance.now(); } };
+  for (const e of EL) { e.js = []; if (e.c <= 4 || e.c === 6) r5SegAdd(t, e); }
+  yield* slice();
+  // ---- intersections: OSM ways that cross share a node, so identical raw vertices = a junction
+  const node = new Map();
+  for (const e of EL) {
+    if (e.c === 5) continue; let s = 0;
+    for (let i = 0; i < e.n0; i++) {
+      if (i) s += Math.hypot(e.P0[2 * i] - e.P0[2 * i - 2], e.P0[2 * i + 1] - e.P0[2 * i - 1]);
+      const k = Math.round(e.P0[2 * i] * 4) + ',' + Math.round(e.P0[2 * i + 1] * 4); let a = node.get(k); if (!a) node.set(k, a = []);
+      a.push([e, Math.min(s, e.L), i === 0 ? 1 : i === e.n0 - 1 ? -1 : 0]);
+    }
+  }
+  const quad = (a, b, c, d) => { const o = pp.length / 3; pp.push(...a, ...b, ...c, ...d); pi.push(o, o + 1, o + 2, o, o + 2, o + 3); };
+  const at = (e, s, o, out) => { const q = rcRoadPoint(e, clamp(s, 0, e.L), out); return [q[0] - q[3] * o, r5RoadY(e, s, o, q) + 0.035, q[1] + q[2] * o]; };
+  const mark = (e, sa, sb, o0, o1) => { const A0 = at(e, sa, o0, rp), A1 = at(e, sa, o1, rp), B1 = at(e, sb, o1, rq), B0 = at(e, sb, o0, rq); quad(A0, A1, B1, B0); quad(B0, B1, A1, A0); };
+  let jn = 0;
+  for (const [, L] of node) {
+    if (L.length < 2 && L[0][2] !== 0) continue;
+    const ents = new Set(L.map(l => l[0])); if (ents.size < 2) continue;
+    const arms = [];
+    for (const [e, s, end] of L) for (const sg of [1, -1]) {
+      if (end === -sg || (sg > 0 ? e.L - s : s) < 3) continue;
+      const q = rcRoadPoint(e, clamp(s + sg * 2, 0, e.L), rp), p0 = rcRoadPoint(e, s, rq); const dx = q[0] - p0[0], dz = q[1] - p0[1], l = Math.hypot(dx, dz) || 1;
+      arms.push({ e, s, sg, dx: dx / l, dz: dz / l, x: p0[0], z: p0[1], y: p0[4] });
+    }
+    for (const a of arms) { let cl = 0; for (const b of arms) if (b.e !== a.e && Math.abs(a.dx * b.dx + a.dz * b.dz) < 0.8) cl = Math.max(cl, b.e.w / 2); a.clear = cl || 3; a.e.js.push([a.s, a.clear + 1]); }
+    if (arms.some(a => a.e.c === 0 || a.e.c === 6 || a.e.brg || a.e.tr || a.e.trEdge)) continue;
+    const drive = arms.filter(a => a.e.c <= 3), art = drive.filter(a => a.e.c <= 2); if (drive.length < 3) continue;
+    const J = arms[0], hsh = rcHash(Math.floor(J.x * 3) * 7919 + Math.floor(J.z * 3));
+    const kind = art.length >= 3 ? 'sig' : art.length >= 2 ? (hsh < 0.5 ? 'sig' : 'minor') : art.length === 1 ? 'stop' : hsh < 0.8 ? 'stop' : '';
+    if (!kind || rcTrMaskV(J.x, J.z) > 100 || isWater(J.x, J.z)) continue;
+    for (const a of drive) {
+      const e = a.e, h = e.w / 2, hx = -a.dx, hz = -a.dz, rx = -hz, rz = hx, ok = !e.ow || e.ow === -a.sg, d0 = a.clear + 0.9;
+      if ((a.sg > 0 ? e.L - a.s : a.s) < d0 + 6) continue;
+      const stopHere = kind === 'sig' || kind === 'stop' || e.c === 3;
+      if (kind === 'sig') for (let o = -h + 0.55; o < h - 0.9; o += 1.25) mark(e, a.s + a.sg * d0, a.s + a.sg * (d0 + 2.7), o, o + 0.62);   // continental crosswalk
+      if (ok && stopHere) { const sb = a.s + a.sg * (d0 + (kind === 'sig' ? 3.6 : 0.6)); mark(e, sb, sb + a.sg * 0.45, e.ow ? -h + 0.3 : 0, -a.sg * (h - 0.3)); }
+      if (!ok) continue;
+      const grp = Math.abs(hx * ST_GE[0] + hz * ST_GE[1]) > 0.707 ? 0 : 1, yaw = Math.atan2(hx, hz);
+      if (kind === 'sig') {
+        const px = a.x + hx * (a.clear + 1.3) + rx * (h + 1.0), pz = a.z + hz * (a.clear + 1.3) + rz * (h + 1.0);
+        (e.c <= 2 && h >= 5.5 ? cell(px, pz).mast : cell(px, pz).post).push([px, rcH(px, pz) + 0.05, pz, yaw, grp]);
+        if (e.rd) (e.rd.sigs || (e.rd.sigs = [])).push({ s: a.s, sig: a.sg, stop: a.clear + 4.8, grp });
+      } else if (stopHere) { const px = a.x - hx * (a.clear + 2.4) + rx * (h + 0.9), pz = a.z - hz * (a.clear + 2.4) + rz * (h + 0.9); cell(px, pz).stop.push([px, rcH(px, pz) + 0.05, pz, yaw]); }
+    }
+    if ((++jn & 31) === 0) yield* slice();
+  }
+  // ---- per road: lamps, bridge structure, expressway barrier and sign gantries
+  let ei = 0;
+  for (const e of EL) {
+    const h = e.w / 2, c = e.c;
+    if (c >= 1 && c <= 3 && !e.brg && !e.tr && e.L > 40) {
+      const S = c <= 2 ? 36 : 50, reg = RC_REG(e.P[0], e.P[1]), sc = c <= 2 ? 1 : 0.84, col = c <= 2 ? (reg === 'cc' ? '#4a5055' : '#9aa0a6') : reg === 'cc' ? '#3d4246' : '#7a6753';
+      let k = 0, side = rcHash(ei * 131 + t.i * 7 + t.j) < 0.5 ? 1 : -1;
+      for (let s = 10 + rcHash(ei * 17 + 3) * S; s < e.L - 8; s += S, k++) {
+        if (c <= 2) side = -side;
+        if (e.js.some(j => Math.abs(j[0] - s) < j[1] + 1.5)) continue;
+        const q = rcRoadPoint(e, s, rp), x = q[0] - q[3] * (h + 0.6) * side, z = q[1] + q[2] * (h + 0.6) * side, y = rcH(x, z);
+        if (isWater(x, z) || r5Blocked(x, z, y) || r5NearOther(x, z, q[4], e, 0.4)) continue;
+        const tx = q[3] * side, tz = -q[2] * side, C = cell(x, z);   // towards the road
+        C.lamp.push([x, y + 0.02, z, Math.atan2(-tz, tx), sc, col]); C.pool.push([x + tx * 2.8 * sc, q[4] + 0.07, z + tz * 2.8 * sc, c <= 2 ? 20 : 15]);
+      }
+    }
+    if (e.brg && !e.tr && c !== 5 && e.n >= 2) {
+      const [NX, NZ, MT] = r5Frame2(e.P, e.n), P = e.P, Y = e.Y, up = new Uint8Array(e.n), D = 1.05, hwy = c === 0 || c === 6;
+      for (let i = 0; i < e.n; i++) up[i] = Y[i] - rcH(P[2 * i], P[2 * i + 1]) > 1.4 ? 1 : 0;
+      const pt = (i, o) => [P[2 * i] + NX[i] * o * MT[i], P[2 * i + 1] + NZ[i] * o * MT[i]];
+      for (let i = 0; i < e.n - 1; i++) {
+        if (!up[i] || !up[i + 1]) continue;
+        const ya = Y[i], yb = Y[i + 1];
+        r5Wall(buf, pt(i, h), pt(i + 1, h), ya - D, ya, yb - D, yb, ST_COL.conc); r5Wall(buf, pt(i + 1, -h), pt(i, -h), yb - D, yb, ya - D, ya, ST_COL.conc);
+        { const a = pt(i, -h), b = pt(i, h), c2 = pt(i + 1, h), d = pt(i + 1, -h); buf.quad([a[0], ya - D, a[1]], [b[0], ya - D, b[1]], [c2[0], yb - D, c2[1]], [d[0], yb - D, d[1]], ST_COL.concD); }
+        for (const sd of [1, -1]) {
+          const m = pt(i, sd * (h + 1.3)), m2 = pt(i + 1, sd * (h + 1.3));
+          if (r5NearOther((m[0] + m2[0]) / 2, (m[1] + m2[1]) / 2, (ya + yb) / 2, e, 0.3, 2.4)) continue;   // another deck joins here (ramp merge): no parapet across it
+          const i0 = pt(i, sd * (h - 0.02)), i1 = pt(i + 1, sd * (h - 0.02)), o0 = pt(i, sd * (h + 0.3)), o1 = pt(i + 1, sd * (h + 0.3)), pc = hwy ? ST_COL.concL : ST_COL.stone, T = hwy ? 0.9 : 1.05;
+          r5Wall(buf, i0, i1, ya, ya + T, yb, yb + T, pc); r5Wall(buf, o1, o0, yb - 0.1, yb + T, ya - 0.1, ya + T, pc);
+          buf.quad([i0[0], ya + T, i0[1]], [i1[0], yb + T, i1[1]], [o1[0], yb + T, o1[1]], [o0[0], ya + T, o0[1]], pc);
+        }
+      }
+      // piers
+      const step = 30, n0 = Math.max(1, Math.floor(e.L / step));
+      for (let k = 0; k < n0; k++) {
+        const s = e.L * (k + 0.5) / n0; let q = rcRoadPoint(e, s, rp), okP = false;
+        for (const ds of [0, 8, -8]) {
+          q = rcRoadPoint(e, clamp(s + ds, 0, e.L), rp); const g = rcH(q[0], q[1]);
+          if (q[4] - g < 3.6 || rcTrMaskV(q[0], q[1]) > 100 || RC.deckFn(q[0], q[1]) !== null) continue;
+          if (r5NearOther(q[0], q[1], g + 0.3, e, 2.2, 2.6)) continue;
+          okP = true; break;
+        }
+        if (!okP) continue;
+        const x = q[0], z = q[1], tx = q[2], tz = q[3], wet = RC.water && RC.water[rcCell(x, z)] === 1, g = (wet ? -3 : rcH(x, z)) - 0.6, top = q[4] - D;
+        if (e.w >= 11) { r5Box(buf, x, z, -tz, tx, e.w * 0.44, 0.75, top - 1.3, top, ST_COL.conc); for (const sd of [-1, 1]) { const px = x - tz * e.w * 0.28 * sd, pz = z + tx * e.w * 0.28 * sd; r5Box(buf, px, pz, tx, tz, 0.65, 0.65, g, top - 1.3, ST_COL.conc); if (!wet) rcAddCol(t.cols, px, pz, 0.7, 0.7, Math.atan2(tx, tz), top, g - 2); } }
+        else { r5Box(buf, x, z, -tz, tx, e.w * 0.42, 0.7, top - 1.1, top, ST_COL.conc); r5Box(buf, x, z, tx, tz, 0.7, 0.8, g, top - 1.1, ST_COL.conc); if (!wet) rcAddCol(t.cols, x, z, 0.85, 0.75, Math.atan2(tx, tz), top, g - 2); }
+      }
+    }
+    if (c === 0 && e.L > 120) {
+      const dir = e.ow < 0 ? -1 : 1;
+      if (!e.brg && !e.tr && e.ow) {   // median barrier on the left of the direction of travel
+        const [NX, NZ, MT] = r5Frame2(e.P, e.n), sd = -dir, pt = (i, o) => [e.P[2 * i] + NX[i] * o * MT[i], e.P[2 * i + 1] + NZ[i] * o * MT[i]];
+        for (let i = 0; i < e.n - 1; i++) {
+          const m = pt(i, sd * (h + 0.5)), m2 = pt(i + 1, sd * (h + 0.5)), ya = e.Y[i], yb = e.Y[i + 1];
+          if (r5NearOther((m[0] + m2[0]) / 2, (m[1] + m2[1]) / 2, (ya + yb) / 2, e, 1.2, 2.6)) continue;
+          const a0 = pt(i, sd * (h + 0.22)), a1 = pt(i + 1, sd * (h + 0.22)), b0 = pt(i, sd * (h + 0.4)), b1 = pt(i + 1, sd * (h + 0.4)), c0 = pt(i, sd * (h + 0.6)), c1 = pt(i + 1, sd * (h + 0.6)), d0 = pt(i, sd * (h + 0.78)), d1 = pt(i + 1, sd * (h + 0.78));
+          buf.quad([a0[0], ya - 0.3, a0[1]], [a1[0], yb - 0.3, a1[1]], [b1[0], yb + 0.82, b1[1]], [b0[0], ya + 0.82, b0[1]], ST_COL.concL); buf.quad([b0[0], ya + 0.82, b0[1]], [b1[0], yb + 0.82, b1[1]], [c1[0], yb + 0.82, c1[1]], [c0[0], ya + 0.82, c0[1]], ST_COL.concL); buf.quad([c0[0], ya + 0.82, c0[1]], [c1[0], yb + 0.82, c1[1]], [d1[0], yb - 0.3, d1[1]], [d0[0], ya - 0.3, d0[1]], ST_COL.concL);
+        }
+      }
+      for (let s = 130 + rcHash(ei * 53 + 11) * 200; s < e.L - 60; s += 820) {   // overhead guide signs
+        const q = rcRoadPoint(e, s, rp), x = q[0], z = q[1], tx = q[2], tz = q[3], y = q[4];
+        if (rcTrenchCov(x, z) || RC.deckFn(x, z) !== null) continue;
+        const dx = tx * dir, dz = tz * dir, g = e.brg && !e.tr ? y - 1 : Math.min(y, rcH(x, z)) - 0.6, span = h + 1.0;
+        for (const sd of [-1, 1]) r5Box(buf, x - tz * span * sd, z + tx * span * sd, tx, tz, 0.2, 0.2, g, y + 7.7, ST_COL.steel);
+        for (const yy of [6.25, 7.5]) r5Box(buf, x, z, -tz, tx, span, 0.11, y + yy, y + yy + 0.2, ST_COL.steel);
+        for (let o = -span + 1.2; o < span; o += 2.4) r5Box(buf, x - tz * o, z + tx * o, tx, tz, 0.07, 0.07, y + 6.45, y + 7.5, ST_COL.steel);
+        const id = r5SignId(x, z, dx, dz), ids = e.w >= 12 ? [id, id === 8 ? 9 : 8] : [id], pw = Math.min(5.6, (e.w - 0.6) / ids.length), ph = pw * 0.5, rx = -dz, rz = dx;
+        ids.forEach((k, j) => {
+          const oc = (j - (ids.length - 1) / 2) * (pw + 0.5), cx = x + rx * oc - dx * 0.3, cz = z + rz * oc - dz * 0.3, y0 = y + 6.9 - ph / 2 + 0.25, o = sp.length / 3, u0 = (k % 2) * 0.5, v1 = 1 - Math.floor(k / 2) * 0.2;
+          sp.push(cx - rx * pw / 2, y0, cz - rz * pw / 2, cx + rx * pw / 2, y0, cz + rz * pw / 2, cx + rx * pw / 2, y0 + ph, cz + rz * pw / 2, cx - rx * pw / 2, y0 + ph, cz - rz * pw / 2);
+          suv.push(u0, v1 - 0.2, u0 + 0.5, v1 - 0.2, u0 + 0.5, v1, u0, v1); si.push(o, o + 1, o + 2, o, o + 2, o + 3);
+          r5Box(buf, cx + dx * 0.06, cz + dz * 0.06, rx, rz, pw / 2, 0.04, y0, y0 + ph, ST_COL.steel);
+        });
+      }
+    }
+    if ((++ei & 15) === 0) yield* slice();
+  }
+  // ---- meshes
+  yield; RC._ts = performance.now();
+  const push = (m, far, x, z) => { scene.add(m); t.meshes.push(m); if (far) ST.chunks.push({ m, x, z, far }); };
+  if (buf.nv) { if (!K.conc) K.conc = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 0.9, metalness: 0.02, side: THREE.DoubleSide }); const m = buf.mesh(K.conc); push(m); }
+  if (pp.length) { const m = rcMesh(pp, pi, K.paint, false); m.receiveShadow = true; push(m); }
+  if (sp.length) { const nor = []; for (let i = 0; i < sp.length; i += 3) nor.push(0, 0, 1); const m = rcMesh(sp, si, K.sign, false, nor, suv); m.geometry.computeVertexNormals(); push(m); }
+  const D = new THREE.Object3D(), col = new THREE.Color();
+  for (const C of cells.values()) {
+    const mk = (list, geo, mat, far, shadow, fn, own) => {
+      if (!list.length) return; const im = new THREE.InstancedMesh(own ? geo.clone() : geo, mat, list.length);
+      list.forEach((L, i) => { D.position.set(L[0], L[1], L[2]); D.rotation.set(0, L[3] || 0, 0); D.scale.setScalar(1); if (fn) fn(L, i, im); D.updateMatrix(); im.setMatrixAt(i, D.matrix); });
+      im.castShadow = shadow; im.receiveShadow = false; im.userData.keepGeo = !own; im.computeBoundingSphere(); im.matrixAutoUpdate = false; push(im, far, C.x, C.z); return im;
+    };
+    mk(C.lamp, K.lamp, K.lampMat, 620, false, (L, i, im) => { D.scale.setScalar(L[4]); im.setColorAt(i, col.set(L[5])); });
+    mk(C.pool, K.pool, K.poolMat, 420, false, L => { D.rotation.set(0, 0, 0); D.scale.set(L[3], 1, L[3]); });
+    for (const k of ['mast', 'post']) { const im = mk(C[k], K[k], K.sigMat, 520, false, null, true); if (im) im.geometry.setAttribute('iGrp', new THREE.InstancedBufferAttribute(new Float32Array(C[k].map(L => L[4])), 1)); }
+    mk(C.stop, K.stop, K.stopMat, 380, false);
+    yield; RC._ts = performance.now();
+  }
+  ST.gen++;
+}
+function r5StreetLOD(dt) {
+  const K = ST.kit; if (!K) return;
+  ST.uLamp.value = lampLevel * 7; K.poolMat.opacity = Math.min(0.5, lampLevel * 0.42); K.poolMat.visible = lampLevel > 0.03;
+  // signal cycle (26 s): group 0 = the east-west streets, group 1 = north-south
+  const ph = (performance.now() / 1000) % 26, on = 2 + lampLevel * 5, off = 0.05, U = ST.uSig.value;
+  for (const g of [0, 1]) { const p = (ph + g * 13) % 26, st = p < 10 ? 0 : p < 13 ? 1 : 2; ST.state[g] = st; U[g * 3] = st === 2 ? on : off; U[g * 3 + 1] = st === 1 ? on : off; U[g * 3 + 2] = st === 0 ? on : off; }
+  if ((ST.f++ & 7) !== 0) return;
+  const cx = camera.position.x, cz = camera.position.z, L = ST.chunks; let w = 0;
+  for (let i = 0; i < L.length; i++) { const c = L[i]; if (!c.m.parent) continue; L[w++] = c; c.m.visible = Math.hypot(c.x - cx, c.z - cz) < c.far + 290; }
+  L.length = w;
 }
