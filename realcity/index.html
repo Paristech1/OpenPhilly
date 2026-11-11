@@ -766,6 +766,9 @@ function streetSkip(x, z, m = 0) {
 }
 function isOnStreet(x, z, pad = 0) {
   if (streetSkip(x, z)) return false;
+  return onAsphalt(x, z, pad);
+}
+function onAsphalt(x, z, pad = 0) {
   for (const e of EW) if (x >= e.x0 && x <= e.x1 && Math.abs(z - e.z) <= e.w / 2 + pad) return true;
   for (const e of EWW) if (x >= e.x0 && x <= e.x1 && Math.abs(z - e.z) <= e.w / 2 + pad) return true;
   for (const s of NS) if (z >= s.z0 && z <= s.z1 && Math.abs(x - s.x) <= s.w / 2 + pad) return true;
@@ -928,7 +931,10 @@ function tryB(x, z, w, d, h, c, type) { if (!excluded(x, z, w, d)) { addB(x, z, 
 const SLABS = [];
 const TREES = [];
 const AUTUMN = ['#b8622e', '#c98d2c', '#9a3c22', '#c9a238', '#6f8236', '#567234', '#94692c', '#ad4a26', '#7f8c38'];
-function addTree(x, z, s = 1, c, sp) { TREES.push({ x, z, h: rr(4.5, 8.5) * s, r: rr(2.2, 3.6) * s, c: arguments.length >= 4 ? c : pick(AUTUMN), sp, keepC: arguments.length >= 4 }); }
+function addTree(x, z, s = 1, c, sp) {
+  if (onAsphalt(x, z, 0.45)) return;
+  TREES.push({ x, z, h: rr(4.5, 8.5) * s, r: rr(2.2, 3.6) * s, c: arguments.length >= 4 ? c : pick(AUTUMN), sp, keepC: arguments.length >= 4 });
+}
 
 function genBlock(x0, x1, z0, z1) {
   const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
@@ -2875,7 +2881,7 @@ function buildStreetTrees() {
   const sites = [];
   const place = (x, z) => {
     if (streetSkip(x, z, 5) || treeBlocked(x, z)) return;
-    if (!onSidewalk(x, z)) return;
+    if (!onSidewalk(x, z) || onAsphalt(x, z, 0.3)) return;
     sites.push({ x, z, h: rr(5.8, 7.8), ry: rnd() * 6 });
   };
   const broad = NS.find(s => s.name === 'Broad St');
@@ -3315,7 +3321,8 @@ function plantOne(t, o, G, byCan, byTrunk, rnd = TRND) {
   (byCan[vk] || (byCan[vk] = [])).push([t.x, yCan, t.z, sx, sy, sx, ry, col]);
   if (!o.street && !isCone && (sp === 'oak' || sp === 'maple' || sp === 'plane' || sp === 'elm') && rnd() < (DETAIL < 1 ? 0.18 : 0.34)) {
     const a = rnd() * Math.PI * 2, d = r * rfn(0.38, 0.62), r2 = r * rfn(0.42, 0.62);
-    (byCan[vk] || (byCan[vk] = [])).push([t.x + Math.cos(a) * d, cy - r * rfn(0.04, 0.26), t.z + Math.sin(a) * d, r2 * S.sx, r2 * S.sy * 0.9, r2 * S.sx, rnd() * 6.28, col]);
+    const cx2 = t.x + Math.cos(a) * d, cz2 = t.z + Math.sin(a) * d;
+    if (!(o.pavement || onAsphalt)(cx2, cz2, 0.45)) (byCan[vk] || (byCan[vk] = [])).push([cx2, cy - r * rfn(0.04, 0.26), cz2, r2 * S.sx, r2 * S.sy * 0.9, r2 * S.sx, rnd() * 6.28, col]);
   }
 }
 function addTreeMeshes(byCan, byTrunk, G, keepGeo) {
@@ -3324,7 +3331,8 @@ function addTreeMeshes(byCan, byTrunk, G, keepGeo) {
     const tm = new THREE.InstancedMesh(G.trunk[k] || G.trunk.decid, barkMat(), L.length);
     L.forEach(([x, y, z, r, h, ry], i) => { dummy.position.set(x, y - 0.05, z); dummy.rotation.set(0, ry, 0); dummy.scale.set(r, h, r); dummy.updateMatrix(); tm.setMatrixAt(i, dummy.matrix); });
     tm.castShadow = tm.receiveShadow = true; tm.frustumCulled = !keepGeo; tm.computeBoundingSphere();
-    if (keepGeo) { tm.userData.keepGeo = true; tm.userData.trunk = true; }
+    tm.userData.trunk = true;
+    if (keepGeo) tm.userData.keepGeo = true;
     out.push(tm);
   }
   for (const [k, L] of Object.entries(byCan)) {
@@ -3343,9 +3351,12 @@ function addTreeMeshes(byCan, byTrunk, G, keepGeo) {
 }
 // list: [{x, z, h, r, c, sp}] -> instanced trunks + species canopies
 function plantTrees(list, o = {}) {
-  if (!list.length) return;
+  const onPav = o.pavement || onAsphalt;
+  const keep = [];
+  for (const t of list) if (!onPav(t.x, t.z, o.street ? 0.25 : 0.45)) keep.push(t);
+  if (!keep.length) return;
   const G = treeGeos(), byCan = {}, byTrunk = {};
-  for (const t of list) plantOne(t, o, G, byCan, byTrunk);
+  for (const t of keep) plantOne(t, o, G, byCan, byTrunk);
   for (const m of addTreeMeshes(byCan, byTrunk, G, !!o.keepGeo)) scene.add(m);
 }
 // ---------------------------------------------------------------- grass + park paving
@@ -3367,7 +3378,7 @@ function buildTrees() {
   for (let i = 0; i < 700; i++) { const x = rr(-1500, -500), z = rr(-1300, -870); if (x > -1500 && x < -1440) continue; addTree(x, z, rr(1, 1.5)); }
   for (let i = 0; i < 300; i++) addTree(rr(-2600, -2320), rr(-800, 800), 1.3);
   for (let i = 0; i < 160; i++) { const x = rr(-1500, -1050), z = rr(-860, -500); if (!inMuseum(x, z, 10) && !inOval(x, z, 4)) addTree(x, z, 1.2); }
-  for (let i = TREES.length - 1; i >= 0; i--) if (treeBlocked(TREES[i].x, TREES[i].z)) TREES.splice(i, 1);
+  for (let i = TREES.length - 1; i >= 0; i--) if (treeBlocked(TREES[i].x, TREES[i].z) || onAsphalt(TREES[i].x, TREES[i].z, 0.45)) TREES.splice(i, 1);
   plantTrees(TREES, { lift: 0.42 });
 }
 
@@ -4839,7 +4850,7 @@ addEventListener('resize', () => {
 // Real Philadelphia from the Drive Philly Blender build: OpenStreetMap streets + ~575k building footprints,
 // streamed in regional packs. Game frame: x = east, z = south, metres, origin at City Hall (39.952335, -75.163789).
 const RC = { meta: null, packs: new Map(), tiles: new Map(), queue: [], job: null, roads: new Set(), ends: new Map(), mats: null,
-  water: null, bridge: null, mapBase: null, ready: false, pendingTP: null, t: 0 };
+  water: null, bridge: null, mapBase: null, ready: false, pendingTP: null, t: 0, roadG: new Map(), parkByTile: new Map() };
 const RC_LAT0 = 39.952335, RC_LON0 = -75.163789, RC_KX = 85453.28234811149, RC_KY = 111033.68832637151;
 const llx = (lat, lon) => [(lon - RC_LON0) * RC_KX, -(lat - RC_LAT0) * RC_KY];
 const CHALL = { x: 17.7, z: -7.1, a: -9.18 * Math.PI / 180 };
@@ -4903,6 +4914,12 @@ const RC_PAL = [
 ];
 const RC_PALC = RC_PAL.map(p => p.map(h => new THREE.Color(h)));
 const RC_RCLS_W = [20, 15, 12, 8, 4.5, 2.2, 7];
+function rcRoadWidth(c, fl) {
+  let w = RC_RCLS_W[c] || 8;
+  const ow = fl & 4, ln = (fl >> 4) & 7;
+  if (ow && c !== 3 && c !== 4) w = ln ? clamp(ln * 3.5 + 2.2, 6, RC_RCLS_W[c]) : c === 0 ? 14 : c === 6 ? 6.5 : RC_RCLS_W[c];
+  return w;
+}
 
 // ---------- data
 function rcPack(i) {
@@ -5289,12 +5306,11 @@ function* rcBuild(t, d) {
     s = ROFF[r];
     let n0 = d.rn[r], c = d.rc[r], fl = d.rf[r], P0 = new Float32Array(2 * n0);
     for (let i = 0; i < n0; i++) { P0[2 * i] = d.ox + d.rp[2 * (s + i)] / 4; P0[2 * i + 1] = -(d.oy + d.rp[2 * (s + i) + 1] / 4); }
-    s += n0; let w = RC_RCLS_W[c];
+    s += n0; let w = rcRoadWidth(c, fl);
     const tr = rcIsTrench(P0, n0);
     if (c === 5) { const mx = P0[(n0 >> 1) * 2], mz = P0[(n0 >> 1) * 2 + 1], dx = mx + 1470.3, dz = mz + 1475.9, pu = dx * 0.71203 + dz * 0.70215, pv = -dx * 0.70215 + dz * 0.71203; if (pu > 66 && pu < 120 && Math.abs(pv) < 36) continue; }   // the Art Museum's own stair model replaces OSM's steps/footway here
     if (!tr && rcIsTunnel(P0, n0)) continue;   // covered roadways (e.g. I-76 under the 30th St decks) would clash with the streets above; the Vine St trench's short tunnels stay
     const ow = (fl & 4) ? ((fl & 8) ? -1 : 1) : 0, ln = (fl >> 4) & 7;
-    if (ow && c !== 3 && c !== 4) w = ln ? clamp(ln * 3.5 + 2.2, 6, RC_RCLS_W[c]) : c === 0 ? 14 : c === 6 ? 6.5 : RC_RCLS_W[c];   // one carriageway of a divided road is narrower than the two-way default
     if (tr) w = 13;   // three lanes + shoulders each way; OSM's frontage Vine St lanes run right along the cut
     if (rcIsVia(P0, n0)) fl |= 1;       // elevated viaducts (I-95) were packed as plain roads
     const P = rcConform(P0, n0, 20), n = P.length / 2, lift = c === 5 ? 0.3 : 0.32 + (6 - c) * 0.008;
@@ -6174,10 +6190,11 @@ function rcBoxE(buf, ax, az, ex, ez, nx, nz, a0, a1, o0, o1, ya, yb, col) {
 function rcRoadGrid(d) {
   const G = new Map(); let s = 0;
   for (let r = 0; r < d.nr; r++) {
-    const n0 = d.rn[r], c = d.rc[r], s0 = s; s += n0; if (c > 4 || (d.rf[r] & 1)) continue;
+    const n0 = d.rn[r], c = d.rc[r], s0 = s; s += n0; if (c === 5 || (d.rf[r] & 1)) continue;
+    const w = rcRoadWidth(c, d.rf[r]);
     for (let i = 0; i < n0 - 1; i++) {
       const ax = d.ox + d.rp[2 * (s0 + i)] / 4, az = -(d.oy + d.rp[2 * (s0 + i) + 1] / 4), bx = d.ox + d.rp[2 * (s0 + i + 1)] / 4, bz = -(d.oy + d.rp[2 * (s0 + i + 1) + 1] / 4);
-      const seg = [ax, az, bx, bz, RC_RCLS_W[c]];
+      const seg = [ax, az, bx, bz, w];
       for (let gx = Math.floor(Math.min(ax, bx) / 16); gx <= Math.floor(Math.max(ax, bx) / 16); gx++) for (let gz = Math.floor(Math.min(az, bz) / 16); gz <= Math.floor(Math.max(az, bz) / 16); gz++) {
         const k = gx * 100003 + gz; let a = G.get(k); if (!a) G.set(k, a = []); a.push(seg);
       }
@@ -6186,11 +6203,29 @@ function rcRoadGrid(d) {
   return G;
 }
 function rcNearRoad(G, x, z) {
+  if (!G) return null;
   let best = null, bd = 1e9; const gx = Math.floor(x / 16), gz = Math.floor(z / 16);
   for (let i = gx - 1; i <= gx + 1; i++) for (let j = gz - 1; j <= gz + 1; j++) { const a = G.get(i * 100003 + j); if (!a) continue;
     for (const sg of a) { const dx = sg[2] - sg[0], dz = sg[3] - sg[1], L2 = dx * dx + dz * dz || 1e-9, t = Math.max(0, Math.min(1, ((x - sg[0]) * dx + (z - sg[1]) * dz) / L2)), px = sg[0] + t * dx, pz = sg[1] + t * dz, d = Math.hypot(x - px, z - pz);
       if (d < bd) { bd = d; best = [d, sg, px, pz]; } } }
   return best;
+}
+function rcOnAsphalt(x, z, pad = 0.55, G) {
+  const a = rcNearRoad(G, x, z); if (a && a[0] < a[1][4] / 2 + pad) return true;
+  const b = rcNearRoad(RC.roadG, x, z); return !!(b && b[0] < b[1][4] / 2 + pad);
+}
+function rcMergeRoadGrid(G) {
+  if (!G) return;
+  const into = RC.roadG || (RC.roadG = new Map());
+  for (const [k, segs] of G) { let a = into.get(k); if (!a) into.set(k, a = []); for (const s of segs) a.push(s); }
+}
+function rcParkKey(x, z) {
+  if (!RC.t0) {
+    const ts = RC.meta.tiles.filter(t => t.f.charAt(0) === 't'), a = ts[0];
+    const b = ts.find(t => t.j === a.j && t.i === a.i + 1), c = ts.find(t => t.i === a.i && t.j === a.j + 1);
+    RC.t0 = { ox: a.ox, oy: a.oy, wx: c ? c.ox - a.ox : 2392.69, wy: b ? b.oy - a.oy : 2442.74 };
+  }
+  return Math.floor((-z - RC.t0.oy) / RC.t0.wy) + ',' + Math.floor((x - RC.t0.ox) / RC.t0.wx);
 }
 function rcStyleMats() {
   if (RC.smats) return RC.smats;
@@ -6483,15 +6518,17 @@ function* rcTreeMeshesG(list, seed, out, extra) {
 }
 function* rcTreeCell(list, seed, out, extra) {
   const G = treeGeos(), R = mulberry32(seed), byCan = {}, byTrunk = {};
-  for (const t of list) plantOne(t, { street: !extra }, G, byCan, byTrunk, R);
+  const o = { street: !extra, pavement: (x, z, pad) => rcOnAsphalt(x, z, pad) };
+  for (const t of list) plantOne(t, o, G, byCan, byTrunk, R);
   for (const m of addTreeMeshes(byCan, byTrunk, G, true)) { out.push(m); yield m; }
 }
 function* rcStreetTrees(t, d) {
-  const list = []; let s = 0; RC.phase = 'trees';
+  const RG = rcRoadGrid(d); rcMergeRoadGrid(RG);
+  const list = [], parksKeep = []; let s = 0; RC.phase = 'trees';
   for (let r = 0; r < d.nr; r++) {
     const n0 = d.rn[r], c = d.rc[r], fl = d.rf[r], s0 = s; s += n0;
-    if (c < 2 || c > 4 || (fl & 1) || n0 < 2) continue;
-    const w = RC_RCLS_W[c], off = w / 2 + (c === 4 ? 1.3 : 1.5);
+    if (c < 2 || c > 3 || (fl & 1) || n0 < 2) continue;
+    const w = rcRoadWidth(c, fl), off = w / 2 + 1.5;
     let acc = 4 + rcHash(r * 7 + t.i * 13) * 6;
     for (let i = 0; i < n0 - 1; i++) {
       const ax = d.ox + d.rp[2 * (s0 + i)] / 4, az = -(d.oy + d.rp[2 * (s0 + i) + 1] / 4), bx = d.ox + d.rp[2 * (s0 + i + 1)] / 4, bz = -(d.oy + d.rp[2 * (s0 + i + 1) + 1] / 4);
@@ -6503,7 +6540,7 @@ function* rcStreetTrees(t, d) {
           const x = mx - ez * off * side, z = mz + ex * off * side, hsh = rcHash(Math.floor(x * 3) * 92821 + Math.floor(z * 3));
           if (hsh > pr) continue;
           if ((x + 227.4) ** 2 + (z + 8196) ** 2 < 205 * 205 || (x + 829.8) ** 2 + (z + 9145.4) ** 2 < 225 * 225 || (x - 1434.6) ** 2 + (z - 814.5) ** 2 < 185 * 185 || (x + 1778.4) ** 2 + (z + 10510.9) ** 2 < 245 * 245 || (x + 1171.6) ** 2 + (z - 525.8) ** 2 < 215 * 215 || (x + 1684.4) ** 2 + (z + 9622.8) ** 2 < 235 * 235 || RC_PACKS.some(([px, pz, pr]) => (x - px) ** 2 + (z - pz) ** 2 < (pr + 15) ** 2)) continue;   // Blender neighbourhoods have their own trees
-          if (isWater(x, z) || rcTreeBlocked(x, z)) continue;
+          if (isWater(x, z) || rcTreeBlocked(x, z) || rcOnAsphalt(x, z, 0.55, RG)) continue;
           const mix = RC_STREET_MIX[reg] || RC_STREET_MIX.north;
           list.push({ x, z, y: rcH(x, z), sp: mix[Math.floor(rcHash(Math.floor(x * 7) + Math.floor(z * 5) * 7919) * mix.length) % mix.length], sc: reg === 'gtown' ? 1.15 : reg === 'south' ? 0.75 : 0.95 });
         }
@@ -6513,9 +6550,17 @@ function* rcStreetTrees(t, d) {
     }
     if (rcSlice()) { yield; RC._ts = performance.now(); }
   }
-  if (!list.length) return;
+  if (t.f.charAt(0) === 't') {
+    const parks = RC.parkByTile.get(t.i + ',' + t.j);
+    if (parks) for (const p of parks) {
+      if (isWater(p.x, p.z) || rcTreeBlocked(p.x, p.z) || rcOnAsphalt(p.x, p.z, 0.7, RG)) continue;
+      parksKeep.push(p);
+    }
+  }
+  if (!list.length && !parksKeep.length) return;
   yield; RC._ts = performance.now(); RC.phase = 'treemesh';
-  for (const m of rcTreeMeshesG(list, t.i * 977 + t.j, [])) { scene.add(m); t.meshes.push(m); yield; RC._ts = performance.now(); }
+  if (list.length) for (const m of rcTreeMeshesG(list, t.i * 977 + t.j, [])) { scene.add(m); t.meshes.push(m); yield; RC._ts = performance.now(); }
+  if (parksKeep.length) for (const m of rcTreeMeshesG(parksKeep, t.i * 977 + t.j + 17, [], true)) { scene.add(m); t.meshes.push(m); yield; RC._ts = performance.now(); }
 }
 function rcPmaAxis(x, z) {   // keep the Art Museum steps / Eakins Oval axis open (no trees in front of the 72 steps)
   const dx = x + 1470.3, dz = z + 1475.9, a = (dx + dz) * 0.7071, b = Math.abs(dx - dz) * 0.7071; return a > 30 && a < 300 && b < 42;
@@ -6527,6 +6572,7 @@ function rcTreeBlocked(x, z) {
     if (Math.abs(u) < c.hx + 1.0 && Math.abs(v) < c.hz + 1.0) return true;
   }
   if (rcPmaAxis(x, z)) return true;
+  if (rcOnAsphalt(x, z, 0.55)) return true;
   return RC.excl && RC.excl.length && rcExclusion(x, z) === 2;
 }
 // park / woodland trees with the species mix (replaces the single-blob version)
@@ -6563,7 +6609,8 @@ rcTrees = function (l) {
     }
   }
   for (let i = list.length - 1; i >= 0; i--) if (rcPmaAxis(list[i].x, list[i].z)) list.splice(i, 1);
-  for (const m of rcTreeMeshes(list, 1701, true)) { m.userData.keepGeo = true; scene.add(m); }
+  RC.parkByTile = new Map();
+  for (const p of list) { const k = rcParkKey(p.x, p.z); let a = RC.parkByTile.get(k); if (!a) RC.parkByTile.set(k, a = []); a.push(p); }
 };
 // tile drop: shared instanced geometries must not be disposed with the tile
 rcDrop = function (k, t) {
@@ -6728,7 +6775,19 @@ async function boot() {
       const triOk = st.tris > 4.5e6 && st.tris < 11e6;
       return { ok: triOk && driveOk, preset, tris: st.tris, calls: st.calls, detail: DETAIL, onPages, driveZ: P.pos.z, driveOk, triOk };
     } };
-  Object.assign(window.__dev, { FILM, setLook, setGlare, applyFilm, plantTrees, TREE_SPEC, TREE_PAL });
+  Object.assign(window.__dev, { FILM, setLook, setGlare, applyFilm, plantTrees, TREE_SPEC, TREE_PAL,
+    treesOnStreet: (pad = 0.2) => {
+      const pav = (x, z, p) => (typeof rcOnAsphalt === 'function' ? rcOnAsphalt(x, z, p) : onAsphalt(x, z, p));
+      let trunks = 0, onStreet = 0; const m = new THREE.Matrix4(), samples = [];
+      scene.traverse(o => {
+        if (!o.isInstancedMesh || !o.userData.trunk) return;
+        for (let i = 0; i < o.count; i++) {
+          o.getMatrixAt(i, m); trunks++;
+          if (pav(m.elements[12], m.elements[14], pad)) { onStreet++; if (samples.length < 8) samples.push([+m.elements[12].toFixed(1), +m.elements[14].toFixed(1)]); }
+        }
+      });
+      return { trunks, onStreet, list: TREES.filter(t => pav(t.x, t.z, pad)).length, samples };
+    } });
   status('Ready'); window.__ready = true;
   $('loader').style.opacity = 0; setTimeout(() => { $('loader').style.display = 'none'; }, 650);
   requestAnimationFrame(frame);
