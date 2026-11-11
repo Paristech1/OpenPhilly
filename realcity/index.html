@@ -6135,6 +6135,7 @@ function* rcBuildings(t, d) {
     const [ox, oz, hx, hz, ang] = rcObb(xs, zs, n);
     if (hx > 0.6 && hz > 0.6) rcAddCol(t.cols, ox, oz, hx, hz, ang, yt, rcTrMaskV(cx, cz) === 140 ? y0 - 0.2 : y0 - 20);   // over a roofed motorway the collider stops at street level so the tunnel below stays drivable
     if (exl === 1) {   // v18.10: building comes from a neighbourhood pack — add only rooftop clutter on its (flat) roof in Center City / South Philly
+      if (rcSportsPad(cx, cz)) continue;   // sports-complex venues are rebuilt in rcSportsComplex; keep the footprint collider
       const rg = RC_REG(cx, cz);
       if ((rg === 'cc' || rg === 'south') && hx > 2 && hz > 2 && rcHash(b * 83 + 6) < 0.6) {
         const ytp = rcH(cx, cz) + Math.min(Math.max(h, 3.5), 40), c = Math.cos(ang), sn = Math.sin(ang), R = k2 => rcHash(b * 89 + k2), Ap = Math.abs(area) / 2, DBp = getD(cx, cz);
@@ -7507,6 +7508,258 @@ function r5StreetLOD(dt) {
   const cx = camera.position.x, cz = camera.position.z, L = ST.chunks; let w = 0;
   for (let i = 0; i < L.length; i++) { const c = L[i]; if (!c.m.parent) continue; L[w++] = c; c.m.visible = Math.hypot(c.x - cx, c.z - cz) < c.far + 290; }
   L.length = w;
+}
+
+// South Philadelphia Sports Complex. The OSM extract only had a 9 m extrusion for the arena
+// (Xfinity Mobile Arena, still labeled Wells Fargo Center in the atlas) and no building meshes
+// at all for Lincoln Financial Field or Citizens Bank Park (they are leisure=stadium polygons).
+// Massing from those footprints plus published architecture:
+//   Linc — NBBJ, wing canopies over the east/west stands, Eagle's Nest at the open north end,
+//          midnight-green bowl, brick/precast shell, solar wall toward I-95 (Wikipedia; OSM way 32891768).
+//   Citizens Bank Park — red brick, stone base, copper-green roofs, 165 ft light towers on the
+//          Pattison gates, home plate south so center field faces the skyline, left-field board
+//          152×86 ft (MLB.com facts; baseballparks.com; OSM way 255489463).
+//   Arena — Ellerbe Becket rounded rectangle, silver metal, glass band, corner light struts and
+//          entry canopies (Wikipedia; arena exterior renovation notes; OSM way 25312366).
+//   Xfinity Live! — low brick courtyard on the old Spectrum site, 1100 Pattison (NBC Sports Arena).
+function rcSportsPad(x, z) {
+  return (x + 703.3) ** 2 + (z - 5662.5) ** 2 < 70 * 70 || (x + 479.1) ** 2 + (z - 5328.9) ** 2 < 42 * 42;
+}
+function rcSportsComplex() {
+  const C = h => new THREE.Color(h);
+  const matVC = (rough, metal) => new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: rough, metalness: metal });
+  const skin = matVC(0.86, 0.04), steel = matVC(0.4, 0.62), line = matVC(0.6, 0.02);
+  line.polygonOffset = true; line.polygonOffsetFactor = -1.5; line.polygonOffsetUnits = -2;
+  const glow = (color, emit, k) => { const m = new THREE.MeshStandardMaterial({ color, emissive: emit, emissiveIntensity: k, roughness: 0.42, metalness: 0.08 }); GLOW.push({ m, k }); return m; };
+  const board = glow('#1c3a2c', '#9dffc4', 1.7), lampM = glow('#fff6d8', '#fff1c2', 2.6), orange = glow('#ff6a1a', '#ff7a2a', 1.9), blue = glow('#1a5cff', '#4d8cff', 1.9), purple = glow('#5c2484', '#d4a0ff', 1.6), redG = glow('#3a1218', '#ff5a6e', 1.15);
+  const Bk = { skin: new RCBuf(), steel: new RCBuf(), line: new RCBuf(), board: new RCBuf(), lamp: new RCBuf(), orange: new RCBuf(), blue: new RCBuf(), purple: new RCBuf(), red: new RCBuf() };
+  const col = {
+    brick: C('#a3543e'), brickD: C('#7c382c'), cbp: C('#8d3428'), cbpD: C('#6e261e'), stone: C('#e4dccb'), stoneD: C('#c9bfa8'),
+    green: C('#0d3b2c'), greenD: C('#071910'), greenL: C('#1f6b42'), seat: C('#145238'), seatD: C('#0c3324'),
+    grass: C('#3c8c3a'), grassD: C('#1f5c28'), dirt: C('#c4a06a'), mound: C('#b8894e'), white: C('#f6f3ea'),
+    steel: C('#dfe3e7'), steelD: C('#8e969e'), truss: C('#4e575f'), solar: C('#1a3d66'), conc: C('#c9c3b6'),
+    track: C('#c9a56e'), wall: C('#1c6b38'), copper: C('#3e7d62'), bell: C('#d4b36a'), plaza: C('#6d6a64'),
+    roof: C('#2e3338'), tan: C('#d8d0c2'), glass: C('#8aa0ae'), dark: C('#1a1e22'), yellow: C('#f0c434'), red: C('#9c2430')
+  };
+  const P = (F, u, v, y) => { const [x, z] = F.toReal(u, v); return [x, y, z]; };
+  const face = (buf, pts, c, inside) => {
+    const ax = pts[1][0] - pts[0][0], ay = pts[1][1] - pts[0][1], az = pts[1][2] - pts[0][2];
+    const bx = pts[2][0] - pts[0][0], by = pts[2][1] - pts[0][1], bz = pts[2][2] - pts[0][2];
+    const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+    const mx = (pts[0][0] + pts[1][0] + pts[2][0]) / 3 - inside[0], my = (pts[0][1] + pts[1][1] + pts[2][1]) / 3 - inside[1], mz = (pts[0][2] + pts[1][2] + pts[2][2]) / 3 - inside[2];
+    const Q = nx * mx + ny * my + nz * mz < 0 ? [...pts].reverse() : pts;
+    if (Q.length === 3) buf.tri(Q[0], Q[1], Q[2], c); else buf.quad(Q[0], Q[1], Q[2], Q[3], c);
+  };
+  const solid = (buf, F, p, c) => {
+    const W = p.map(([u, v, y]) => P(F, u, v, y)); let sx = 0, sy = 0, sz = 0;
+    for (const w of W) { sx += w[0]; sy += w[1]; sz += w[2]; }
+    const inside = [sx / W.length, sy / W.length, sz / W.length], q = (a, b, d, e) => face(buf, [W[a], W[b], W[d], W[e]], c, inside);
+    q(4, 7, 6, 5); q(0, 1, 2, 3); q(0, 4, 5, 1); q(1, 5, 6, 2); q(2, 6, 7, 3); q(3, 7, 4, 0);
+  };
+  const box = (buf, F, u0, u1, v0, v1, y0, y1, c) => solid(buf, F, [[u0, v0, y0], [u1, v0, y0], [u1, v1, y0], [u0, v1, y0], [u0, v0, y1], [u1, v0, y1], [u1, v1, y1], [u0, v1, y1]], c);
+  const shellU = (buf, F, u0, u1, v0, v1, y0, y1, c, n = 9) => {
+    const cols = Array.isArray(c) ? c : [c, c];
+    for (let i = 0; i < n; i++) {
+      const t0 = i / n, t1 = (i + 1) / n, ua = u0 + (u1 - u0) * t0, ub = u0 + (u1 - u0) * t1, ya = y0 + (y1 - y0) * t0, yb = y0 + (y1 - y0) * t1;
+      solid(buf, F, [[ua, v0, ya - 0.55], [ub, v0, yb - 0.55], [ub, v1, yb - 0.55], [ua, v1, ya - 0.55], [ua, v0, ya], [ub, v0, yb], [ub, v1, yb], [ua, v1, ya]], cols[i % 2]);
+    }
+  };
+  const shellV = (buf, F, u0, u1, v0, v1, y0, y1, c, n = 8) => {
+    const cols = Array.isArray(c) ? c : [c, c];
+    for (let i = 0; i < n; i++) {
+      const t0 = i / n, t1 = (i + 1) / n, va = v0 + (v1 - v0) * t0, vb = v0 + (v1 - v0) * t1, ya = y0 + (y1 - y0) * t0, yb = y0 + (y1 - y0) * t1;
+      solid(buf, F, [[u0, va, ya - 0.55], [u1, va, ya - 0.55], [u1, vb, yb - 0.55], [u0, vb, yb - 0.55], [u0, va, ya], [u1, va, ya], [u1, vb, yb], [u0, vb, yb]], cols[i % 2]);
+    }
+  };
+  const extrude = (buf, F, ring, y0, y1, c) => {
+    const n = ring.length, B = ring.map(([u, v]) => P(F, u, v, y0)), T = ring.map(([u, v]) => P(F, u, v, y1));
+    let sx = 0, sy = 0, sz = 0;
+    for (const w of [...B, ...T]) { sx += w[0]; sy += w[1]; sz += w[2]; }
+    const inside = [sx / (2 * n), sy / (2 * n), sz / (2 * n)];
+    for (let i = 1; i < n - 1; i++) face(buf, [T[0], T[i], T[i + 1]], c, inside);
+    for (let i = 1; i < n - 1; i++) face(buf, [B[0], B[i + 1], B[i]], c, inside);
+    for (let i = 0; i < n; i++) { const j = (i + 1) % n; face(buf, [B[i], B[j], T[j], T[i]], c, inside); }
+  };
+  const oct = (rx, ry, c) => { const x = rx - c, y = ry - c; return [[rx, y], [x, ry], [-x, ry], [-rx, y], [-rx, -y], [-x, -ry], [x, -ry], [rx, -y]]; };
+  const hit = (F, u0, u1, v0, v1, top, bot) => { const [x, z] = F.toReal((u0 + u1) / 2, (v0 + v1) / 2); rcAddCol([], x, z, Math.abs(u1 - u0) / 2, Math.abs(v1 - v0) / 2, F.rot, top, bot); };
+  const grade = (cx, cz, r) => {
+    // the terrain grid wanders several metres across a venue; sit the whole model on the highest sample
+    let m = -1e9; const n = 10;
+    for (let iz = -n; iz <= n; iz++) for (let ix = -n; ix <= n; ix++) {
+      if (ix * ix + iz * iz > (n + 0.2) * (n + 0.2)) continue;
+      m = Math.max(m, rcH(cx + ix / n * r, cz + iz / n * r));
+    }
+    return m + 0.55;
+  };
+  const seats = [col.green, col.greenD], seatsL = [col.greenL, col.green];
+
+  // ---- Lincoln Financial Field: north-south field, wing canopies on the sidelines
+  {
+    const F = LMF(-316.2, 5709.9, 9.18), Y = grade(-316.2, 5709.9, 100), S = Y - 8;
+    box(Bk.skin, F, -28, 28, -56, 56, S, Y + 0.7, col.grass);
+    box(Bk.skin, F, -26, 26, -56, -46.2, Y + 0.72, Y + 0.9, col.grassD);
+    box(Bk.skin, F, -26, 26, 46.2, 56, Y + 0.72, Y + 0.9, col.grassD);
+    for (let y = -45; y <= 45; y += 9.14) box(Bk.line, F, -24.2, 24.2, y - 0.12, y + 0.12, Y + 0.92, Y + 1.02, col.white);
+    box(Bk.line, F, -24.4, -24.1, -54.8, 54.8, Y + 0.92, Y + 1.02, col.white);
+    box(Bk.line, F, 24.1, 24.4, -54.8, 54.8, Y + 0.92, Y + 1.02, col.white);
+    for (const hs of [-6.5, 6.5]) for (let y = -36; y <= 36; y += 9.14) box(Bk.line, F, hs - 0.7, hs + 0.7, y - 0.1, y + 0.1, Y + 0.94, Y + 1.04, col.white);
+    for (const v of [-54.6, 54.6]) {
+      box(Bk.skin, F, -0.16, 0.16, v - 0.16, v + 0.16, Y + 1.0, Y + 4.2, col.yellow);
+      box(Bk.skin, F, -3.0, 3.0, v - 0.14, v + 0.14, Y + 4.05, Y + 4.4, col.yellow);
+      box(Bk.skin, F, -3.0, -2.7, v - 0.14, v + 0.14, Y + 4.2, Y + 14, col.yellow);
+      box(Bk.skin, F, 2.7, 3.0, v - 0.14, v + 0.14, Y + 4.2, Y + 14, col.yellow);
+    }
+    const band = (u0, u1, y0, y1, v0, v1, pal) => shellU(Bk.skin, F, u0, u1, v0, v1, y0, y1, pal, 8);
+    band(32, 74, Y + 1.4, Y + 15, -88, 88, seats);
+    band(-74, -32, Y + 15, Y + 1.4, -88, 88, seats);
+    shellV(Bk.skin, F, -64, 64, -62, -106, Y + 1.4, Y + 13, seats, 7);
+    shellV(Bk.skin, F, -64, 64, 62, 106, Y + 1.4, Y + 14, seats, 7);
+    band(60, 102, Y + 18, Y + 34, -78, -26, seats);
+    band(60, 102, Y + 18, Y + 34, -26, 26, seatsL);
+    band(60, 102, Y + 18, Y + 34, 26, 78, seats);
+    band(-102, -60, Y + 34, Y + 18, -78, -26, seats);
+    band(-102, -60, Y + 34, Y + 18, -26, 26, seatsL);
+    band(-102, -60, Y + 34, Y + 18, 26, 78, seats);
+    box(Bk.skin, F, 70, 78, -76, 76, Y + 14.2, Y + 19.5, col.glass);
+    box(Bk.skin, F, -78, -70, -76, 76, Y + 14.2, Y + 19.5, col.glass);
+    shellU(Bk.steel, F, 72, 122, -92, 92, Y + 35, Y + 46, col.steel, 2);
+    shellU(Bk.steel, F, -122, -72, -92, 92, Y + 46, Y + 35, col.steel, 2);
+    box(Bk.steel, F, 118, 123, -92, 92, Y + 42, Y + 47.2, col.truss);
+    box(Bk.steel, F, -123, -118, -92, 92, Y + 42, Y + 47.2, col.truss);
+    for (const u of [78, -78]) for (let v = -84; v <= 84; v += 14) box(Bk.lamp, F, u - 0.5, u + 0.5, v - 0.5, v + 0.5, Y + 33.2, Y + 34.2, col.white);
+    box(Bk.skin, F, -46, 46, -112, -104, Y + 16, Y + 20, col.conc);
+    for (const u of [-40, -14, 14, 40]) box(Bk.skin, F, u - 1.1, u + 1.1, -110, -106, S, Y + 16, col.conc);
+    box(Bk.skin, F, 108, 114, -100, 100, S, Y + 18, col.tan);
+    box(Bk.skin, F, -114, -108, -100, 100, S, Y + 18, col.tan);
+    box(Bk.skin, F, -96, 96, 112, 118, S, Y + 16, col.brick);
+    box(Bk.skin, F, -90, 90, -118, -112, S, Y + 8, col.brickD);
+    box(Bk.skin, F, 114.2, 115.6, -78, 78, Y + 5, Y + 20, col.solar);
+    for (let v = -72; v <= 72; v += 12) box(Bk.steel, F, 115.4, 116, v - 0.15, v + 0.15, Y + 5, Y + 20, col.truss);
+    for (const [u, v] of [[100, 96], [-100, 96], [100, -96], [-100, -96]]) box(Bk.skin, F, u - 7, u + 7, v - 7, v + 7, S, Y + 24, col.stone);
+    box(Bk.skin, F, -34, 34, -66, -62, Y + 18, Y + 27, col.dark);
+    box(Bk.board, F, -32, 32, -65.6, -63.2, Y + 19, Y + 26, col.white);
+    box(Bk.skin, F, -28, 28, 62, 66, Y + 16, Y + 25, col.dark);
+    box(Bk.board, F, -26, 26, 63.2, 65.6, Y + 17, Y + 24, col.white);
+    box(Bk.skin, F, -20, 20, 108, 116, Y + 16, Y + 19.2, col.green);
+    hit(F, -116, 116, -118, 118, Y + 40, S);
+  }
+
+  // ---- Citizens Bank Park: home plate south, open outfield toward the skyline
+  {
+    const F = LMF(-230, 5153.4, 9.18), Y = grade(-230, 5153.4, 110), S = Y - 8;
+    extrude(Bk.skin, F, [[-78, 58], [78, 58], [92, 20], [70, -78], [0, -96], [-70, -78], [-92, 20]], S, Y + 0.7, col.grass);
+    const dirt = [[0, 50], [24, 26], [0, 2], [-24, 26]];
+    extrude(Bk.line, F, dirt, Y + 0.72, Y + 0.95, col.dirt);
+    box(Bk.skin, F, -3.2, 3.2, 20, 26.4, Y + 0.96, Y + 1.45, col.mound);
+    for (const [u, v] of [[0, 48], [18.5, 29.5], [0, 11], [-18.5, 29.5]]) box(Bk.line, F, u - 0.45, u + 0.45, v - 0.45, v + 0.45, Y + 1.0, Y + 1.2, col.white);
+    const foul = (u, v) => { const n = 8; for (let i = 0; i < n; i++) { const t0 = i / n, t1 = (i + 1) / n; box(Bk.line, F, u * t0 - 0.18, u * t0 + 0.18, 48 + (v - 48) * t0, 48 + (v - 48) * t1, Y + 1.0, Y + 1.16, col.white); } };
+    foul(78, -62); foul(-78, -62);
+    for (const s of [-1, 1]) { box(Bk.skin, F, s * 76, s * 76.5, -64, -62, Y + 1.0, Y + 22, col.yellow); }
+    shellV(Bk.skin, F, -72, 72, 46, 104, Y + 1.3, Y + 16, [col.seat, col.seatD], 8);
+    shellV(Bk.skin, F, -78, 78, 70, 112, Y + 18, Y + 30, [col.seatD, col.seat], 6);
+    shellU(Bk.skin, F, 28, 96, -10, 62, Y + 1.2, Y + 14, [col.seat, col.seatD], 7);
+    shellU(Bk.skin, F, -96, -28, -10, 62, Y + 14, Y + 1.2, [col.seat, col.seatD], 7);
+    shellU(Bk.skin, F, 36, 88, -55, 8, Y + 1.1, Y + 9, [col.seat, col.seatD], 5);
+    shellU(Bk.skin, F, -88, -36, -55, 8, Y + 9, Y + 1.1, [col.seat, col.seatD], 5);
+    box(Bk.skin, F, -100, -18, 108, 116, S, Y + 18, col.cbp);
+    box(Bk.skin, F, 18, 100, 108, 116, S, Y + 18, col.cbp);
+    box(Bk.skin, F, -100, 100, 114, 118, S, Y + 3.2, col.stone);
+    box(Bk.skin, F, -16, 16, 106, 114, S, Y + 22, col.glass);
+    box(Bk.skin, F, -22, 22, 112, 116, Y + 18.5, Y + 22.4, col.copper);
+    box(Bk.skin, F, 96, 104, -16, 100, S, Y + 16, col.cbp);
+    box(Bk.skin, F, -104, -96, -16, 100, S, Y + 16, col.cbp);
+    box(Bk.skin, F, -96, 96, 112.5, 115.5, Y + 14.6, Y + 16.2, col.cbpD);
+    for (let u = -88; u <= 88; u += 8) box(Bk.skin, F, u - 1.1, u + 1.1, 115.2, 116.4, Y + 15.2, Y + 17.4, col.dark);
+    box(Bk.steel, F, -92, 92, -108, -96, S, Y + 7.2, col.cbpD);
+    box(Bk.steel, F, -92, 92, -108, -100, Y + 6.4, Y + 7.6, col.copper);
+    box(Bk.skin, F, -58, -8, -86, -76, Y + 6, Y + 34, col.dark);
+    box(Bk.red, F, -54, -12, -75.6, -73.6, Y + 10, Y + 32, col.white);
+    box(Bk.skin, F, -60, -6, -88.5, -86, Y + 8, Y + 32, col.red);
+    for (let i = 0; i < 6; i++) for (let k = 0; k < 4; k++) box(Bk.skin, F, -54 + i * 7.2, -50 + i * 7.2, -91.2, -88.6, Y + 10 + k * 4.6, Y + 13 + k * 4.6, col.tan);
+    box(Bk.skin, F, -1.2, 1.2, -104, -100, Y + 6, Y + 14, col.bell);
+    box(Bk.skin, F, -3.4, 3.4, -106, -98, Y + 13.2, Y + 16.4, col.bell);
+    box(Bk.skin, F, -2.2, 2.2, -105, -99, Y + 16.2, Y + 18.6, col.bell);
+    const tower = (u, v) => {
+      for (const [du, dv] of [[-1.6, -1.6], [1.6, -1.6], [-1.6, 1.6], [1.6, 1.6]]) box(Bk.steel, F, u + du - 0.28, u + du + 0.28, v + dv - 0.28, v + dv + 0.28, S, Y + 46, col.steelD);
+      for (const yy of [12, 24, 36]) box(Bk.steel, F, u - 2.2, u + 2.2, v - 2.2, v + 2.2, Y + yy, Y + yy + 0.35, col.steel);
+      box(Bk.steel, F, u - 3.2, u + 3.2, v - 0.35, v + 0.35, Y + 44, Y + 45, col.truss);
+      box(Bk.steel, F, u - 0.35, u + 0.35, v - 3.2, v + 3.2, Y + 44, Y + 45, col.truss);
+      for (const [du, dv] of [[-2.4, 0], [2.4, 0], [0, -2.4], [0, 2.4], [-1.6, -1.6], [1.6, 1.6]]) box(Bk.lamp, F, u + du - 0.45, u + du + 0.45, v + dv - 0.45, v + dv + 0.45, Y + 45.2, Y + 46.6, col.white);
+    };
+    tower(-72, 104); tower(72, 104); tower(-96, -24); tower(96, -24);
+    hit(F, -108, 108, -112, 118, Y + 32, S);
+  }
+
+  // ---- Wells Fargo Center / Xfinity Mobile Arena: silver rounded bowl, corner lights
+  {
+    const cx = -695.5, cz = 5683.3, F = LMF(cx, cz, 9.18), Y = grade(cx, cz, 70), S = Y - 6;
+    const wall = (rx, ry, y0, y1, c) => extrude(Bk.skin, F, oct(rx, ry, 18), y0, y1, c);
+    wall(76, 74, S, Y + 8, col.conc);
+    wall(76.5, 74.5, Y + 8, Y + 22, col.glass);
+    wall(76, 74, Y + 22, Y + 36, col.steel);
+    extrude(Bk.steel, F, oct(81, 79, 20), Y + 34.2, Y + 37.4, col.steelD);
+    box(Bk.steel, F, -22, 22, -14, 14, Y + 36, Y + 44, col.roof);
+    box(Bk.steel, F, -16, 16, -8, 8, Y + 44, Y + 47, col.truss);
+    for (const [su, sv, buf] of [[1, 1, Bk.blue], [1, -1, Bk.orange], [-1, -1, Bk.orange], [-1, 1, Bk.blue]]) {
+      const u = su * 78, v = sv * 76;
+      box(buf, F, u - 2.4, u + 2.4, v - 2.4, v + 2.4, Y + 4, Y + 41, col.white);
+    }
+    box(Bk.orange, F, -36, 36, -78.2, -76.4, Y + 30, Y + 32.2, col.white);
+    box(Bk.blue, F, -36, 36, 76.4, 78.2, Y + 30, Y + 32.2, col.white);
+    box(Bk.skin, F, -24, 24, 74.2, 76.4, Y + 12, Y + 26, col.dark);
+    box(Bk.board, F, -22, 22, 75.6, 77.2, Y + 13.2, Y + 24.6, col.white);
+    box(Bk.skin, F, -48, -28, -76.4, -74.2, Y + 14, Y + 25, col.dark);
+    box(Bk.board, F, -46, -30, -77.4, -75.6, Y + 15, Y + 24, col.white);
+    box(Bk.skin, F, 28, 48, -76.4, -74.2, Y + 14, Y + 25, col.dark);
+    box(Bk.board, F, 30, 46, -77.4, -75.6, Y + 15, Y + 24, col.white);
+    box(Bk.steel, F, 74, 90, -18, 18, Y + 4.2, Y + 6.4, col.steel);
+    box(Bk.steel, F, -16, 16, 74, 90, Y + 4.2, Y + 6.2, col.steel);
+    box(Bk.steel, F, -92, -74, -14, 14, Y + 4.2, Y + 6.2, col.steelD);
+    hit(F, -78, 78, -76, 76, Y + 40, S);
+  }
+
+  // ---- Xfinity Live!: brick courtyard between the venues, on 1100 Pattison
+  {
+    const F = LMF(-479.1, 5328.9, 9.18), Y = grade(-479.1, 5328.9, 40), S = Y - 4;
+    box(Bk.skin, F, -58, -16, -36, 40, S, Y + 11, col.cbp);
+    box(Bk.steel, F, -60, -14, -38, 42, Y + 11, Y + 12.2, col.roof);
+    box(Bk.skin, F, 16, 54, -30, 38, S, Y + 10, col.brick);
+    box(Bk.steel, F, 14, 56, -32, 40, Y + 10, Y + 11.2, col.roof);
+    box(Bk.skin, F, -46, 46, 24, 48, S, Y + 9, col.cbpD);
+    box(Bk.steel, F, -48, 48, 22, 50, Y + 9, Y + 10.2, col.roof);
+    box(Bk.skin, F, -34, 34, -46, -22, S, Y + 8, col.brickD);
+    box(Bk.line, F, -14, 14, -18, 20, Y + 0.15, Y + 0.4, col.plaza);
+    box(Bk.skin, F, -10, 10, -8, 6, Y + 0.4, Y + 0.55, col.grass);
+    box(Bk.skin, F, -9, 9, 14, 22, Y + 0.4, Y + 1.7, col.dark);
+    box(Bk.purple, F, -8, 8, 20.5, 22.2, Y + 1.7, Y + 6.5, col.white);
+    box(Bk.purple, F, -52, -18, -2.4, -0.6, Y + 7.4, Y + 9.2, col.white);
+    box(Bk.purple, F, 18, 50, -2.4, -0.6, Y + 6.8, Y + 8.4, col.white);
+    box(Bk.skin, F, -6, 6, 46, 52, S, Y + 16, col.dark);
+    box(Bk.purple, F, -5, 5, 50, 53.5, Y + 10, Y + 15.2, col.white);
+    box(Bk.steel, F, -20, 20, 28, 46, Y + 8.2, Y + 9.1, col.steelD);
+    hit(F, -58, 54, -46, 50, Y + 12, S);
+  }
+
+  const mats = { skin, steel, line, board, lamp: lampM, orange, blue, purple, red: redG };
+  RC.sports = [];
+  for (const [k, buf] of Object.entries(Bk)) if (buf.nv) { const m = buf.mesh(mats[k]); m.name = 'sports-' + k; scene.add(m); RC.sports.push(m); }
+}
+
+{
+  const ex0 = rcExclusion, lm0 = rcLandmarks;
+  rcExclusion = (x, z) => rcSportsPad(x, z) ? 1 : ex0(x, z);
+  rcLandmarks = () => { lm0(); rcSportsComplex(); };
+  TP.push(
+    { name: 'Lincoln Financial Field', sub: 'South end · Pattison', x: -340, z: 5960, yaw: -0.16 },
+    { name: 'Citizens Bank Park', sub: 'Pattison Ave gate', x: -200, z: 5345, yaw: -0.16 },
+    { name: 'Wells Fargo Center', sub: 'East plaza', x: -560, z: 5675, yaw: Math.PI / 2 - 0.16 }
+  );
+  SCENIC.push(
+    { name: 'Sports Complex (aerial)', pos: [-40, 340, 6320], look: [-470, 30, 5520], fov: 42 },
+    { name: 'The Linc from the south', pos: [-470, 78, 6020], look: [-316, 28, 5710], fov: 48 },
+    { name: 'Citizens Bank Park from Pattison', pos: [-160, 14, 5385], look: [-230, 24, 5153], fov: 52 },
+    { name: 'Sports Complex at night', pos: [-80, 260, 6180], look: [-500, 36, 5550], fov: 46, time: 'night' }
+  );
 }
 
 boot();
