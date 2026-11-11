@@ -16,8 +16,8 @@ Reference: modern open-world street chase — dense geometry, PBR materials, str
 | Curbs | Beveled merged geometry + granite specular shader | Done |
 | Buildings | Window shader + sills/spandrels + sky glass reflections | Done |
 | Facade trim | Base courses + cornice bands near arterials | Done |
-| Trees | 16-seg trunks, detail-2 crowns, multi-sphere clusters | Done |
-| Arterial trees | Palm-style rows on Broad St & Market St | Done |
+| Trees | Species silhouettes (maple, oak, plane, pear, locust, ginkgo, elm, willow, cherry, sweetgum, pine, spruce, bare), branching trunks, dual-seed canopy variants, PBR leaf SSS | Done |
+| Arterial trees | Mixed London plane / locust / pear / ginkgo / elm / maple / cherry rows on Broad St & Market St | Done |
 | Street lamps | 16-seg poles, spherical heads | Done |
 | Lighting | 4K shadows (high), wider frustum, exposure | Done |
 | Post | Bloom strength/threshold/radius per time preset | Done |
