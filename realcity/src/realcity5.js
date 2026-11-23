@@ -790,6 +790,7 @@ function* r5Street(t, EL) {
     };
     mk(C.lamp, K.lamp, K.lampMat, 620, false, (L, i, im) => { D.scale.setScalar(L[4]); im.setColorAt(i, col.set(L[5])); });
     mk(C.pool, K.pool, K.poolMat, 420, false, L => { D.rotation.set(0, 0, 0); D.scale.set(L[3], 1, L[3]); });
+    if (typeof r7LampCoronas === 'function' && C.lamp.length) { const cor = r7LampCoronas(C.lamp); if (cor) push(cor, 900, C.x, C.z); }   // v22 light coronas
     for (const k of ['mast', 'post']) { const im = mk(C[k], K[k], K.sigMat, 520, false, null, true); if (im) im.geometry.setAttribute('iGrp', new THREE.InstancedBufferAttribute(new Float32Array(C[k].map(L => L[4])), 1)); }
     mk(C.stop, K.stop, K.stopMat, 380, false);
     yield; RC._ts = performance.now();
