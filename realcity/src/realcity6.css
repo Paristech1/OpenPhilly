@@ -1,0 +1,11 @@
+/* v21: game controller HUD */
+.pg{display:inline-grid;place-items:center;min-width:1.45em;height:1.45em;border-radius:50%;border:1px solid rgba(255,255,255,.35);font:600 10px/1 var(--body);color:var(--ink);vertical-align:-1px}
+body.pad-on #joy,body.pad-on #footBtns,body.pad-on #flyBtns{display:none!important}
+#padCross{display:none;position:absolute;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;border:2px solid var(--acid);border-radius:50%;pointer-events:none;box-shadow:0 0 0 1px rgba(0,0,0,.5)}
+#padCross::before,#padCross::after{content:"";position:absolute;background:var(--acid)}
+#padCross::before{left:50%;top:-9px;bottom:-9px;width:2px;margin-left:-1px}
+#padCross::after{top:50%;left:-9px;right:-9px;height:2px;margin-top:-1px}
+body.pad-on #padCross{display:block}
+body.pad-on #panel button:focus{outline:2px solid var(--acid);outline-offset:2px}
+body.pad-on #hint{max-width:min(430px,calc(50vw - 190px))}
+body.pad-on #radar{bottom:calc(98px + env(safe-area-inset-bottom,0px))}
